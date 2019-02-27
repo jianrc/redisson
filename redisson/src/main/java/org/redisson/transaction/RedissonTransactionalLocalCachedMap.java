@@ -80,4 +80,44 @@ public class RedissonTransactionalLocalCachedMap<K, V> extends RedissonTransacti
         throw new UnsupportedOperationException("getCachedMap method is not supported in transaction");
     }
 
+
+	@Override
+	public Set<Entry<K, V>> localEntrySet() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public V localGet(Object key) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Set<K> localKeySet() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Collection<V> localValues() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public boolean localContainsKey(Object key) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public boolean localContainsValue(Object value) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void addCacheListener(ICacheListener l) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void removeCacheListener(ICacheListener l) {
+		throw new UnsupportedOperationException();
+	}
 }

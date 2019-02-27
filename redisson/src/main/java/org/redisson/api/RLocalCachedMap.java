@@ -79,4 +79,21 @@ public interface RLocalCachedMap<K, V> extends RMap<K, V>, RDestroyable {
      */
     Map<K, V> getCachedMap();
     
+    Set<java.util.Map.Entry<K, V>> localEntrySet();
+    
+    V localGet(Object key);
+    
+    Set<K> localKeySet();
+    
+    Collection<V> localValues();
+    
+    boolean localContainsKey(Object key);
+    boolean localContainsValue(Object value);
+    
+    void addCacheListener(ICacheListener l);
+    void removeCacheListener(ICacheListener l);
+    
+    public static interface ICacheListener {
+    	void onUpdate(Object key, Object value);
+    }
 }

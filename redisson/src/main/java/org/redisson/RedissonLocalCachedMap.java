@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -125,6 +126,8 @@ public class RedissonLocalCachedMap<K, V> extends RedissonMap<K, V> implements R
     
     private long cacheUpdateLogTime = TimeUnit.MINUTES.toMillis(10);
     private byte[] instanceId;
+    
+    private Set<ICacheListener> cacheListeners = new LinkedHashSet<>();
     private Cache<CacheKey, CacheValue> cache;
     private int invalidateEntryOnChange;
     private SyncStrategy syncStrategy;
@@ -1057,4 +1060,74 @@ public class RedissonLocalCachedMap<K, V> extends RedissonMap<K, V> implements R
         return localCacheView.getCachedMap();
     }
     
+
+	@Override
+	public Set<Entry<K, V>> localEntrySet() {
+        final Set<Entry<K, V>> result = new HashSet<Entry<K, V>>();
+        for (CacheValue value : cache.values()) {
+            result.add(new AbstractMap.SimpleEntry<K, V>((K)value.getKey(), (V)value.getValue()));
+        }
+        return result;
+	}
+
+	@Override
+	public V localGet(Object key) {
+        checkKey(key);
+
+        final CacheKey cacheKey = toCacheKey(key);
+        CacheValue cacheValue = cache.get(cacheKey);
+        if(cacheValue == null) return null;
+        return (V) cacheValue.getValue();
+	}
+
+	@Override
+	public Set<K> localKeySet() {
+        final Set<K> result = new HashSet<>();
+        for (CacheValue value : cache.values()) {
+        	result.add((K) value.getKey());
+        }
+        
+		return result;
+	}
+
+	@Override
+	public Collection<V> localValues() {
+        final List<V> result = new ArrayList<V>();
+        for (CacheValue value : cache.values()) {
+            result.add((V) value.getValue());
+        }
+        
+		return result;
+	}
+
+	@Override
+	public boolean localContainsKey(Object key) {
+        checkKey(key);
+        CacheKey cacheKey = toCacheKey(key);
+        return cache.containsKey(cacheKey);
+	}
+
+	@Override
+	public boolean localContainsValue(Object value) {
+        checkValue(value);
+        
+        CacheValue cacheValue = new CacheValue(null, value);
+        return cache.containsValue(cacheValue);
+	}
+
+	public void fireOnUpdate(Object key, Object value) {
+		for (ICacheListener l : cacheListeners) {
+			l.onUpdate(key, value);
+		}
+	}
+	
+	@Override
+	public void addCacheListener(ICacheListener l) {
+		cacheListeners.add(l);
+	}
+
+	@Override
+	public void removeCacheListener(ICacheListener l) {
+		cacheListeners.remove(l);
+	}
 }
