@@ -160,6 +160,7 @@ public class RedissonLocalCachedMap<K, V> extends RedissonMap<K, V> implements R
                 Object key = codec.getMapKeyDecoder().decode(keyBuf, null);
                 Object value = codec.getMapValueDecoder().decode(valueBuf, null);
                 cachePut(cacheKey, key, value);
+                fireOnUpdate(key, value);
             }
             
         };
