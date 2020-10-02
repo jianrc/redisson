@@ -6,9 +6,21 @@ import static org.assertj.core.api.Assertions.*;
 import org.junit.Assert;
 import org.junit.Test;
 import org.redisson.api.RBucketReactive;
+import org.redisson.api.RKeysReactive;
+import org.redisson.api.RKeysRx;
 import org.redisson.api.RMapReactive;
+import reactor.core.publisher.Flux;
 
 public class RedissonKeysReactiveTest extends BaseReactiveTest {
+
+    @Test
+    public void testGetKeys() {
+        RKeysReactive keys = redisson.getKeys();
+        sync(redisson.getBucket("test1").set(1));
+        sync(redisson.getBucket("test2").set(1));
+        Flux<String> k = keys.getKeys();
+        assertThat(k.toIterable()).contains("test1", "test2");
+    }
 
     @Test
     public void testKeysIterablePattern() {
@@ -18,10 +30,13 @@ public class RedissonKeysReactiveTest extends BaseReactiveTest {
         sync(redisson.getBucket("test12").set("someValue"));
 
         Iterator<String> iterator = toIterator(redisson.getKeys().getKeysByPattern("test?"));
+        int size = 0;
         for (; iterator.hasNext();) {
             String key = iterator.next();
             assertThat(key).isIn("test1", "test2");
+            size += 1;
         }
+        assertThat(size).isEqualTo(2);
     }
 
     @Test

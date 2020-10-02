@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ package org.redisson.api;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.channels.AsynchronousByteChannel;
+import java.nio.channels.SeekableByteChannel;
 
 /**
- * Binary stream holder. Maximum size of stream is limited by available memory of Redis master node.
+ * Binary stream holder stores a sequence of bytes.
+ * Maximum size of stream is limited to 512Mb.
  * 
  * @author Nikita Koksharov
  *
@@ -27,18 +30,34 @@ import java.io.OutputStream;
 public interface RBinaryStream extends RBucket<byte[]> {
 
     /**
-     * Returns inputStream which reads binary stream.
-     * This stream isn't thread-safe.
+     * Returns async channel object which allows to write and read binary stream.
+     * This object isn't thread-safe.
+     *
+     * @return channel object
+     */
+    AsynchronousByteChannel getAsynchronousChannel();
+
+    /**
+     * Returns channel object which allows to write and read binary stream.
+     * This object isn't thread-safe.
+     *
+     * @return channel object
+     */
+    SeekableByteChannel getChannel();
+
+    /**
+     * Returns inputStream object which allows to read binary stream.
+     * This object isn't thread-safe.
      * 
-     * @return stream
+     * @return stream object
      */
     InputStream getInputStream();
 
     /**
-     * Returns outputStream which writes binary stream.
-     * This stream isn't thread-safe.
+     * Returns outputStream object which allows to write binary stream.
+     * This object isn't thread-safe.
      * 
-     * @return stream
+     * @return stream object
      */
     OutputStream getOutputStream();
     

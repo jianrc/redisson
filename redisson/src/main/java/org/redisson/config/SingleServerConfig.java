@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,6 @@
  */
 package org.redisson.config;
 
-import java.net.URI;
-import org.redisson.misc.URIBuilder;
-
 /**
  * 
  * @author Nikita Koksharov
@@ -29,7 +26,7 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
      * Redis server address
      *
      */
-    private URI address;
+    private String address;
 
     /**
      * Minimum idle subscription connection amount
@@ -45,7 +42,7 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
     /**
      * Minimum idle Redis connection amount
      */
-    private int connectionMinimumIdleSize = 32;
+    private int connectionMinimumIdleSize = 24;
 
     /**
      * Redis connection maximum pool size
@@ -95,7 +92,7 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
     /**
      * Redis subscription-connection pool size limit
      * <p>
-     * Default is 50
+     * Default is <code>50</code>
      *
      * @param subscriptionConnectionPoolSize - pool size
      * @return config
@@ -116,20 +113,12 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
      */
     public SingleServerConfig setAddress(String address) {
         if (address != null) {
-            this.address = URIBuilder.create(address);
+            this.address = address;
         }
         return this;
     }
-    public URI getAddress() {
-        if (address != null) {
-            return address;
-        }
-        return null;
-    }
-    void setAddress(URI address) {
-        if (address != null) {
-            this.address = address;
-        }
+    public String getAddress() {
+        return address;
     }
 
     /**
@@ -153,7 +142,7 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
     /**
      * Minimum idle subscription connection amount.
      * <p>
-     * Default is 1
+     * Default is <code>1</code>
      * 
      * @param subscriptionConnectionMinimumIdleSize - connections amount
      * @return config
@@ -170,7 +159,7 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
     /**
      * Minimum idle Redis connection amount.
      * <p>
-     * Default is <code>10</code>
+     * Default is <code>24</code>
      *
      * @param connectionMinimumIdleSize - connections amount
      * @return config

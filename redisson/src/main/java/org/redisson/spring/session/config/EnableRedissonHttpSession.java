@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,11 @@ import java.lang.annotation.Target;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.session.MapSession;
+import org.springframework.session.web.http.SessionRepositoryFilter;
 
 /**
  * Enables Redisson's Spring Session implementation backed by Redis and
- * exposes SessionRepositoryFilter as a bean named "springSessionRepositoryFilter".
+ * exposes {@link SessionRepositoryFilter} as a bean named "springSessionRepositoryFilter".
  * <p>
  * Redisson instance should be registered as bean in application context.
  * Usage example:

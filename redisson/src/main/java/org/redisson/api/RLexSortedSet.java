@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -156,6 +156,8 @@ public interface RLexSortedSet extends RLexSortedSetAsync, RSortedSet<String>, R
      * @param fromInclusive - start element inclusive
      * @param toElement - end element
      * @param toInclusive - end element inclusive
+     * @param offset - offset of result collection
+     * @param count - amount of result collection
      * @return collection of elements
      */
     Collection<String> range(String fromElement, boolean fromInclusive, String toElement, boolean toInclusive, int offset, int count);
@@ -221,6 +223,8 @@ public interface RLexSortedSet extends RLexSortedSetAsync, RSortedSet<String>, R
      * @param fromInclusive - start element inclusive
      * @param toElement - end element
      * @param toInclusive - end element inclusive
+     * @param offset - offset of result collection
+     * @param count - amount of result collection
      * @return collection of elements
      */
     Collection<String> rangeReversed(String fromElement, boolean fromInclusive, String toElement, boolean toInclusive, int offset, int count);

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -224,7 +224,7 @@ public class RedissonTransaction implements RTransaction {
                 return;
             }
                             
-            RFuture<List<?>> transactionFuture = transactionExecutor.executeAsync();
+            RFuture<BatchResult<?>> transactionFuture = transactionExecutor.executeAsync();
             transactionFuture.onComplete((r, exc) -> {
                 if (exc != null) {
                     result.tryFailure(new TransactionException("Unable to execute transaction", exc));
@@ -241,18 +241,15 @@ public class RedissonTransaction implements RTransaction {
     }
 
     private BatchOptions createOptions() {
-        int syncSlaves = 0;
-        if (!commandExecutor.getConnectionManager().isClusterMode()) {
-            MasterSlaveEntry entry = commandExecutor.getConnectionManager().getEntrySet().iterator().next();
-            syncSlaves = entry.getAvailableClients() - 1;
-        }
-        
+        MasterSlaveEntry entry = commandExecutor.getConnectionManager().getEntrySet().iterator().next();
+        int syncSlaves = entry.getAvailableSlaves();
+
         BatchOptions batchOptions = BatchOptions.defaults()
                 .syncSlaves(syncSlaves, options.getSyncTimeout(), TimeUnit.MILLISECONDS)
                 .responseTimeout(options.getResponseTimeout(), TimeUnit.MILLISECONDS)
                 .retryAttempts(options.getRetryAttempts())
                 .retryInterval(options.getRetryInterval(), TimeUnit.MILLISECONDS)
-                .atomic();
+                .executionMode(BatchOptions.ExecutionMode.IN_MEMORY_ATOMIC);
         return batchOptions;
     }
 
@@ -351,7 +348,7 @@ public class RedissonTransaction implements RTransaction {
                 RedissonLocalCachedMap<?, ?> map = (RedissonLocalCachedMap<?, ?>) mapOperation.getMap();
                 
                 HashKey hashKey = new HashKey(transactionalOperation.getName(), transactionalOperation.getCodec());
-                byte[] key = map.toCacheKey(mapOperation.getKey()).getKeyHash();
+                byte[] key = map.getLocalCacheView().toCacheKey(mapOperation.getKey()).getKeyHash();
                 HashValue value = hashes.get(hashKey);
                 if (value == null) {
                     value = new HashValue();
@@ -445,7 +442,7 @@ public class RedissonTransaction implements RTransaction {
                 RedissonLocalCachedMap<?, ?> map = (RedissonLocalCachedMap<?, ?>) mapOperation.getMap();
                 
                 HashKey hashKey = new HashKey(transactionalOperation.getName(), transactionalOperation.getCodec());
-                byte[] key = map.toCacheKey(mapOperation.getKey()).getKeyHash();
+                byte[] key = map.getLocalCacheView().toCacheKey(mapOperation.getKey()).getKeyHash();
                 HashValue value = hashes.get(hashKey);
                 if (value == null) {
                     value = new HashValue();
@@ -581,7 +578,7 @@ public class RedissonTransaction implements RTransaction {
         }
 
         RPromise<Void> result = new RedissonPromise<>();
-        RFuture<List<?>> future = executorService.executeAsync();
+        RFuture<BatchResult<?>> future = executorService.executeAsync();
         future.onComplete((res, e) -> {
             if (e != null) {
                 result.tryFailure(new TransactionException("Unable to rollback transaction", e));

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,13 +52,5 @@ public interface RBucketsAsync {
      * @return void
      */
     RFuture<Void> setAsync(Map<String, ?> buckets);
-    
-    /**
-     * Delete multiple objects by name
-     *
-     * @param keys - object names
-     * @return number of removed keys
-     */
-    RFuture<Long> deleteAsync(String... keys);
     
 }

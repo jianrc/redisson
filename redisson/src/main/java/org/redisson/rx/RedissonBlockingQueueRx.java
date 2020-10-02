@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,9 +36,7 @@ public class RedissonBlockingQueueRx<V> extends RedissonListRx<V> {
     }
 
     public Flowable<V> takeElements() {
-        return ElementsStream.takeElements(() -> {
-            return queue.takeAsync();
-        });
+        return ElementsStream.takeElements(queue::takeAsync);
     }
     
 }

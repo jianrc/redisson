@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package org.redisson.eviction;
 
 import java.util.Arrays;
 
+import org.redisson.RedissonObject;
 import org.redisson.api.RFuture;
 import org.redisson.client.codec.LongCodec;
 import org.redisson.client.protocol.RedisCommands;
@@ -44,14 +45,12 @@ public class MapCacheEvictionTask extends EvictionTask {
         this.maxIdleSetName = maxIdleSetName;
         this.expiredChannelName = expiredChannelName;
         this.lastAccessTimeSetName = lastAccessTimeSetName;
-        this.executeTaskOnceLatchName = prefixName("redisson__execute_task_once_latch", name);
+        this.executeTaskOnceLatchName = RedissonObject.prefixName("redisson__execute_task_once_latch", name);
     }
-
-    protected String prefixName(String prefix, String name) {
-        if (name.contains("{")) {
-            return prefix + ":" + name;
-        }
-        return prefix + ":{" + name + "}";
+    
+    @Override
+    String getName() {
+        return name;
     }
     
     @Override
@@ -75,7 +74,7 @@ public class MapCacheEvictionTask extends EvictionTask {
                     + "end;"  
                 + "end;" 
               + "if #expiredKeys1 > 0 then "
-                  + "redis.call('zrem', KEYS[4], unpack(expiredKeys1)); "
+                  + "redis.call('zrem', KEYS[5], unpack(expiredKeys1)); "
                   + "redis.call('zrem', KEYS[3], unpack(expiredKeys1)); "
                   + "redis.call('zrem', KEYS[2], unpack(expiredKeys1)); "
                   + "redis.call('hdel', KEYS[1], unpack(expiredKeys1)); "
@@ -93,7 +92,7 @@ public class MapCacheEvictionTask extends EvictionTask {
                   + "end;"  
               + "end;" 
               + "if #expiredKeys2 > 0 then "
-                  + "redis.call('zrem', KEYS[4], unpack(expiredKeys2)); "
+                  + "redis.call('zrem', KEYS[5], unpack(expiredKeys2)); "
                   + "redis.call('zrem', KEYS[3], unpack(expiredKeys2)); "
                   + "redis.call('zrem', KEYS[2], unpack(expiredKeys2)); "
                   + "redis.call('hdel', KEYS[1], unpack(expiredKeys2)); "

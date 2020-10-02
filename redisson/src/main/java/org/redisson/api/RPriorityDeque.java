@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,16 @@
  */
 package org.redisson.api;
 
-import java.util.Deque;
 import java.util.stream.Stream;
 
 /**
+ * Redis based priority deque.
  * 
  * @author Nikita Koksharov
  *
  * @param <V> value type
  */
-public interface RPriorityDeque<V> extends Deque<V>, RPriorityQueue<V> {
+public interface RPriorityDeque<V> extends RDeque<V>, RPriorityQueue<V> {
 
     /**
      * Returns stream of elements contained in this deque in reverse order

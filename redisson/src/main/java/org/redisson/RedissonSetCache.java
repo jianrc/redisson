@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ import org.redisson.client.protocol.RedisCommands;
 import org.redisson.client.protocol.decoder.ListScanResult;
 import org.redisson.command.CommandAsyncExecutor;
 import org.redisson.eviction.EvictionScheduler;
+import org.redisson.iterator.RedissonBaseIterator;
 import org.redisson.mapreduce.RedissonCollectionMapReduce;
-import org.redisson.misc.Hash;
 import org.redisson.misc.RedissonPromise;
 
 import io.netty.buffer.ByteBuf;
@@ -114,7 +114,8 @@ public class RedissonSetCache<V> extends RedissonExpirable implements RSetCache<
 
     @Override
     public RFuture<Boolean> containsAsync(Object o) {
-        return commandExecutor.evalReadAsync(getName(o), codec, RedisCommands.EVAL_BOOLEAN,
+        String name = getName(o);
+        return commandExecutor.evalReadAsync(name, codec, RedisCommands.EVAL_BOOLEAN,
                     "local expireDateScore = redis.call('zscore', KEYS[1], ARGV[2]); " + 
                      "if expireDateScore ~= false then " +
                          "if tonumber(expireDateScore) <= tonumber(ARGV[1]) then " +
@@ -125,7 +126,7 @@ public class RedissonSetCache<V> extends RedissonExpirable implements RSetCache<
                      "else " +
                          "return 0;" +
                      "end; ",
-               Arrays.<Object>asList(getName(o)), System.currentTimeMillis(), encode(o));
+               Arrays.<Object>asList(name), System.currentTimeMillis(), encode(o));
     }
 
     @Override
@@ -243,14 +244,15 @@ public class RedissonSetCache<V> extends RedissonExpirable implements RSetCache<
         ByteBuf objectState = encode(value);
 
         long timeoutDate = System.currentTimeMillis() + unit.toMillis(ttl);
-        return commandExecutor.evalWriteAsync(getName(value), codec, RedisCommands.EVAL_BOOLEAN,
+        String name = getName(value);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_BOOLEAN,
                 "local expireDateScore = redis.call('zscore', KEYS[1], ARGV[3]); " +
                 "redis.call('zadd', KEYS[1], ARGV[2], ARGV[3]); " +
                 "if expireDateScore ~= false and tonumber(expireDateScore) > tonumber(ARGV[1]) then " +
                     "return 0;" +
                 "end; " +
                 "return 1; ",
-                Arrays.<Object>asList(getName(value)), System.currentTimeMillis(), timeoutDate, objectState);
+                Arrays.asList(name), System.currentTimeMillis(), timeoutDate, objectState);
     }
 
     @Override
@@ -260,7 +262,8 @@ public class RedissonSetCache<V> extends RedissonExpirable implements RSetCache<
 
     @Override
     public RFuture<Boolean> removeAsync(Object o) {
-        return commandExecutor.writeAsync(getName(o), codec, RedisCommands.ZREM, getName(o), encode(o));
+        String name = getName(o);
+        return commandExecutor.writeAsync(name, codec, RedisCommands.ZREM, name, encode(o));
     }
 
     @Override
@@ -371,48 +374,39 @@ public class RedissonSetCache<V> extends RedissonExpirable implements RSetCache<
         delete();
     }
 
-    public String getLockName(Object value, String suffix) {
-        ByteBuf state = encode(value);
-        try {
-            return suffixName(getName(value), Hash.hash128toBase64(state) + ":" + suffix);
-        } finally {
-            state.release();
-        }
-    }
-
     @Override
     public RPermitExpirableSemaphore getPermitExpirableSemaphore(V value) {
-        String lockName = getLockName(value, "permitexpirablesemaphore");
-        return new RedissonPermitExpirableSemaphore(commandExecutor, lockName, ((Redisson) redisson).getSemaphorePubSub());
+        String lockName = getLockByValue(value, "permitexpirablesemaphore");
+        return new RedissonPermitExpirableSemaphore(commandExecutor, lockName);
     }
 
     @Override
     public RSemaphore getSemaphore(V value) {
-        String lockName = getLockName(value, "semaphore");
-        return new RedissonSemaphore(commandExecutor, lockName, ((Redisson) redisson).getSemaphorePubSub());
+        String lockName = getLockByValue(value, "semaphore");
+        return new RedissonSemaphore(commandExecutor, lockName);
     }
     
     @Override
     public RCountDownLatch getCountDownLatch(V value) {
-        String lockName = getLockName(value, "countdownlatch");
+        String lockName = getLockByValue(value, "countdownlatch");
         return new RedissonCountDownLatch(commandExecutor, lockName);
     }
     
     @Override
     public RLock getFairLock(V value) {
-        String lockName = getLockName(value, "fairlock");
+        String lockName = getLockByValue(value, "fairlock");
         return new RedissonFairLock(commandExecutor, lockName);
     }
     
     @Override
     public RLock getLock(V value) {
-        String lockName = getLockName(value, "lock");
+        String lockName = getLockByValue(value, "lock");
         return new RedissonLock(commandExecutor, lockName);
     }
     
     @Override
     public RReadWriteLock getReadWriteLock(V value) {
-        String lockName = getLockName(value, "rw_lock");
+        String lockName = getLockByValue(value, "rw_lock");
         return new RedissonReadWriteLock(commandExecutor, lockName);
     }
 

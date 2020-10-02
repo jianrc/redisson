@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,18 @@
  */
 package org.redisson.api;
 
+import io.reactivex.Completable;
+import io.reactivex.Single;
+
 import java.util.concurrent.TimeUnit;
 
-import io.reactivex.Flowable;
-
 /**
- * RxJava2 interface for Rate Limiter object
+ * Reactive interface for Redis based Rate Limiter object.
  * 
  * @author Nikita Koksharov
  *
  */
-public interface RRateLimiterRx extends RObjectRx {
+public interface RRateLimiterRx extends RExpirableRx {
 
     /**
      * Initializes RateLimiter's state and stores config to Redis server.
@@ -37,7 +38,18 @@ public interface RRateLimiterRx extends RObjectRx {
      * @return {@code true} if rate was set and {@code false}
      *         otherwise
      */
-    Flowable<Boolean> trySetRate(RateType mode, long rate, long rateInterval, RateIntervalUnit rateIntervalUnit);
+    Single<Boolean> trySetRate(RateType mode, long rate, long rateInterval, RateIntervalUnit rateIntervalUnit);
+
+    /**
+     * Updates RateLimiter's state and stores config to Redis server.
+     *
+     * @param mode - rate mode
+     * @param rate - rate
+     * @param rateInterval - rate time interval
+     * @param rateIntervalUnit - rate time interval unit
+     *
+     */
+    Single<Void> setRate(RateType mode, long rate, long rateInterval, RateIntervalUnit rateIntervalUnit);
 
     /**
      * Acquires a permit only if one is available at the
@@ -53,7 +65,7 @@ public interface RRateLimiterRx extends RObjectRx {
      * @return {@code true} if a permit was acquired and {@code false}
      *         otherwise
      */
-    Flowable<Boolean> tryAcquire();
+    Single<Boolean> tryAcquire();
     
     /**
      * Acquires the given number of <code>permits</code> only if all are available at the
@@ -70,7 +82,7 @@ public interface RRateLimiterRx extends RObjectRx {
      * @return {@code true} if a permit was acquired and {@code false}
      *         otherwise
      */
-    Flowable<Boolean> tryAcquire(long permits);
+    Single<Boolean> tryAcquire(long permits);
     
     /**
      * Acquires a permit from this RateLimiter, blocking until one is available.
@@ -80,7 +92,7 @@ public interface RRateLimiterRx extends RObjectRx {
      * 
      * @return void
      */
-    Flowable<Void> acquire();
+    Completable acquire();
     
     /**
      * Acquires a specified <code>permits</code> from this RateLimiter, 
@@ -93,7 +105,7 @@ public interface RRateLimiterRx extends RObjectRx {
      * @param permits the number of permits to acquire
      * @return void
      */
-    Flowable<Void> acquire(long permits);
+    Completable acquire(long permits);
     
     /**
      * Acquires a permit from this RateLimiter, if one becomes available
@@ -118,7 +130,7 @@ public interface RRateLimiterRx extends RObjectRx {
      * @return {@code true} if a permit was acquired and {@code false}
      *         if the waiting time elapsed before a permit was acquired
      */
-    Flowable<Boolean> tryAcquire(long timeout, TimeUnit unit);
+    Single<Boolean> tryAcquire(long timeout, TimeUnit unit);
     
     /**
      * Acquires the given number of <code>permits</code> only if all are available
@@ -143,6 +155,13 @@ public interface RRateLimiterRx extends RObjectRx {
      * @return {@code true} if a permit was acquired and {@code false}
      *         if the waiting time elapsed before a permit was acquired
      */
-    Flowable<Boolean> tryAcquire(long permits, long timeout, TimeUnit unit);
-    
+    Single<Boolean> tryAcquire(long permits, long timeout, TimeUnit unit);
+
+    /**
+     * Returns amount of available permits.
+     *
+     * @return number of permits
+     */
+    Single<Long> availablePermits();
+
 }

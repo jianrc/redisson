@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,15 +21,12 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import org.redisson.RedissonExecutorService;
 import org.redisson.api.RFuture;
-import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.LongCodec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.client.protocol.RedisCommands;
 import org.redisson.command.CommandExecutor;
 import org.redisson.executor.params.ScheduledParameters;
-import org.redisson.misc.RPromise;
-import org.redisson.remote.RRemoteServiceResponse;
 import org.redisson.remote.RemoteServiceRequest;
 import org.redisson.remote.RequestId;
 import org.redisson.remote.ResponseEntry;
@@ -43,8 +40,8 @@ public class ScheduledTasksService extends TasksService {
 
     private RequestId requestId;
     
-    public ScheduledTasksService(Codec codec, RedissonClient redisson, String name, CommandExecutor commandExecutor, String redissonId, ConcurrentMap<String, ResponseEntry> responses) {
-        super(codec, redisson, name, commandExecutor, redissonId, responses);
+    public ScheduledTasksService(Codec codec, String name, CommandExecutor commandExecutor, String redissonId, ConcurrentMap<String, ResponseEntry> responses) {
+        super(codec, name, commandExecutor, redissonId, responses);
     }
     
     public void setRequestId(RequestId requestId) {
@@ -55,7 +52,12 @@ public class ScheduledTasksService extends TasksService {
     protected RFuture<Boolean> addAsync(String requestQueueName, RemoteServiceRequest request) {
         ScheduledParameters params = (ScheduledParameters) request.getArgs()[0];
         params.setRequestId(request.getId());
-        
+
+        long expireTime = 0;
+        if (params.getTtl() > 0) {
+            expireTime = System.currentTimeMillis() + params.getTtl();
+        }
+
         return commandExecutor.evalWriteAsync(name, LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
                 // check if executor service not in shutdown state
                 "if redis.call('exists', KEYS[2]) == 0 then "
@@ -67,6 +69,10 @@ public class ScheduledTasksService extends TasksService {
                         + "redis.call('set', KEYS[6], ARGV[4]);"
                         + "local time = tonumber(ARGV[1]) + tonumber(ARGV[4]);"
                         + "redis.call('zadd', KEYS[3], time, 'ff' .. ARGV[2]);"
+                    + "end; "
+
+                    + "if tonumber(ARGV[5]) > 0 then "
+                        + "redis.call('zadd', KEYS[7], ARGV[5], ARGV[2]);"
                     + "end; "
 
                     + "redis.call('zadd', KEYS[3], ARGV[1], ARGV[2]);"
@@ -81,8 +87,9 @@ public class ScheduledTasksService extends TasksService {
                     + "return 1;"
                 + "end;"
                 + "return 0;", 
-                Arrays.<Object>asList(tasksCounterName, statusName, schedulerQueueName, schedulerChannelName, tasksName, tasksRetryIntervalName),
-                params.getStartTime(), request.getId(), encode(request), tasksRetryInterval);
+                Arrays.asList(tasksCounterName, statusName, schedulerQueueName,
+                        schedulerChannelName, tasksName, tasksRetryIntervalName, tasksExpirationTimeName),
+                params.getStartTime(), request.getId(), encode(request), tasksRetryInterval, expireTime);
     }
     
     @Override
@@ -121,22 +128,20 @@ public class ScheduledTasksService extends TasksService {
     }
     
     @Override
-    protected <T extends RRemoteServiceResponse> RPromise<T> pollResultResponse(long timeout, RequestId requestId,
-            RemoteServiceRequest request) {
+    protected long getTimeout(Long executionTimeoutInMillis, RemoteServiceRequest request) {
         if (request.getArgs()[0].getClass() == ScheduledParameters.class) {
             ScheduledParameters params = (ScheduledParameters) request.getArgs()[0];
-            timeout += params.getStartTime() - System.currentTimeMillis();
+            return executionTimeoutInMillis + params.getStartTime() - System.currentTimeMillis();
         }
-        return super.pollResultResponse(timeout, requestId, request);
+        return executionTimeoutInMillis;
     }
-    
     
     @Override
     protected RequestId generateRequestId() {
         if (requestId == null) {
             byte[] id = new byte[17];
             ThreadLocalRandom.current().nextBytes(id);
-            id[0] = 1;
+            id[0] = 01;
             return new RequestId(id);
         }
         return requestId;

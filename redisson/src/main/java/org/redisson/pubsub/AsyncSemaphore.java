@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ public class AsyncSemaphore {
         
     }
     
-    private int counter;
+    private volatile int counter;
     private final Set<Entry> listeners = new LinkedHashSet<Entry>();
 
     public AsyncSemaphore(int permits) {
@@ -162,7 +162,7 @@ public class AsyncSemaphore {
             Iterator<Entry> iter = listeners.iterator();
             if (iter.hasNext()) {
                 Entry entry = iter.next();
-                if (entry.getPermits() >= counter) {
+                if (entry.getPermits() <= counter) {
                     iter.remove();
                     entryToAcquire = entry;
                 }

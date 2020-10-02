@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,16 +30,13 @@ import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManagerFactory;
 
+import io.netty.channel.*;
 import org.redisson.client.RedisClient;
 import org.redisson.client.RedisClientConfig;
 import org.redisson.client.RedisConnection;
 import org.redisson.config.SslProvider;
 
 import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -56,7 +53,7 @@ import io.netty.util.NetUtil;
 public class RedisChannelInitializer extends ChannelInitializer<Channel> {
 
     public enum Type {PUBSUB, PLAIN}
-    
+
     private final RedisClientConfig config;
     private final RedisClient redisClient;
     private final Type type;
@@ -86,13 +83,13 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
         } else {
             ch.pipeline().addLast(new RedisPubSubConnectionHandler(redisClient));
         }
-        
+
         ch.pipeline().addLast(
             connectionWatchdog,
             CommandEncoder.INSTANCE,
             CommandBatchEncoder.INSTANCE,
             new CommandsQueue());
-        
+
         if (pingConnectionHandler != null) {
             ch.pipeline().addLast(pingConnectionHandler);
         }
@@ -102,11 +99,15 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
         } else {
             ch.pipeline().addLast(new CommandPubSubDecoder(config.getExecutor(), config.isKeepPubSubOrder(), config.isDecodeInExecutor()));
         }
+
+        ch.pipeline().addLast(new ErrorsLoggingHandler());
+
+        config.getNettyHook().afterChannelInitialization(ch);
     }
     
     private void initSsl(final RedisClientConfig config, Channel ch) throws KeyStoreException, IOException,
             NoSuchAlgorithmException, CertificateException, SSLException, UnrecoverableKeyException {
-        if (!"rediss".equals(config.getAddress().getScheme())) {
+        if (!config.getAddress().isSsl()) {
             return;
         }
 
@@ -119,7 +120,7 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
         if (config.getSslTruststore() != null) {
             KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
             
-            InputStream stream = config.getSslTruststore().toURL().openStream();
+            InputStream stream = config.getSslTruststore().openStream();
             try {
                 char[] password = null;
                 if (config.getSslTruststorePassword() != null) {
@@ -138,7 +139,7 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
         if (config.getSslKeystore() != null){
             KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
             
-            InputStream stream = config.getSslKeystore().toURL().openStream();
+            InputStream stream = config.getSslKeystore().openStream();
             char[] password = null;
             if (config.getSslKeystorePassword() != null) {
                 password = config.getSslKeystorePassword().toCharArray();
@@ -200,6 +201,7 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
                         ctx.fireChannelActive();
                     } else {
                         RedisConnection connection = RedisConnection.getFrom(ctx.channel());
+                        connection.closeAsync();
                         connection.getConnectionPromise().tryFailure(e.cause());
                     }
                 }

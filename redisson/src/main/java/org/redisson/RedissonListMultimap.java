@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import org.redisson.client.protocol.RedisCommands;
 import org.redisson.client.protocol.RedisStrictCommand;
 import org.redisson.client.protocol.convertor.BooleanAmountReplayConvertor;
 import org.redisson.command.CommandAsyncExecutor;
+import org.redisson.misc.RedissonPromise;
 
 import io.netty.buffer.ByteBuf;
 
@@ -202,17 +203,31 @@ public class RedissonListMultimap<K, V> extends RedissonMultimap<K, V> implement
             
             @Override
             public RFuture<Boolean> removeAllAsync(Collection<?> c) {
-                ByteBuf keyState = encodeMapKey(key);
+                if (c.isEmpty()) {
+                    return RedissonPromise.newSucceededFuture(false);
+                }
+
+                List<Object> args = new ArrayList<Object>(c.size() + 1);
+                args.add(encodeMapKey(key));
+                encode(args, c);
+                
                 return commandExecutor.evalWriteAsync(RedissonListMultimap.this.getName(), codec, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('hdel', KEYS[1], ARGV[1]); " +
-                        "return redis.call('del', KEYS[2]) > 0; ",
-                    Arrays.<Object>asList(RedissonListMultimap.this.getName(), setName), keyState);
+                        "local v = 0 " +
+                        "for i = 2, #ARGV, 1 do "
+                            + "if redis.call('lrem', KEYS[2], 0, ARGV[i]) == 1 "
+                            + "then v = 1 end "
+                       +"end "
+                      + "redis.call('hdel', KEYS[1], ARGV[1]); " 
+                      + "return v",
+                    Arrays.<Object>asList(RedissonListMultimap.this.getName(), setName), 
+                    args.toArray());
             }
             
             @Override
             public RFuture<Boolean> deleteAsync() {
                 ByteBuf keyState = encodeMapKey(key);
-                return RedissonListMultimap.this.fastRemoveAsync(Arrays.<Object>asList(keyState), Arrays.<Object>asList(setName), RedisCommands.EVAL_BOOLEAN_AMOUNT);
+                return RedissonListMultimap.this.fastRemoveAsync(Arrays.asList(keyState),
+                        Arrays.asList(RedissonListMultimap.this.getName(), setName), RedisCommands.EVAL_BOOLEAN_AMOUNT);
             }
             
             @Override

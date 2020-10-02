@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -173,7 +173,7 @@ public class RedissonCache implements Cache {
 
     private <T> Object putValue(Object key, Callable<T> valueLoader, Object value) {
         try {
-            value = toStoreValue(valueLoader.call());
+            value = valueLoader.call();
         } catch (Exception ex) {
             RuntimeException exception;
             try {

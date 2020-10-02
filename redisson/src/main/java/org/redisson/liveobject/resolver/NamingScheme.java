@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,15 +24,13 @@ import org.redisson.client.codec.Codec;
  */
 public interface NamingScheme {
 
-    String getName(Class<?> entityClass, Class<?> idFieldClass, String idFieldName, Object idValue);
+    String getNamePattern(Class<?> entityClass);
+
+    String getName(Class<?> entityClass, Object idValue);
     
     String getIndexName(Class<?> entityClass, String fieldName);
     
-    String getFieldReferenceName(Class<?> entityClass, Object idValue, Class<?> fieldClass, String fieldName, Object fieldValue);
-
-    String resolveClassName(String name);
-
-    String resolveIdFieldName(String name);
+    String getFieldReferenceName(Class<?> entityClass, Object idValue, Class<?> fieldClass, String fieldName);
 
     Object resolveId(String name);
     

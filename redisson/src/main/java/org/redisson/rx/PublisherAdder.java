@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.reactivestreams.Publisher;
 import org.redisson.api.RFuture;
 
 import io.reactivex.Flowable;
+import io.reactivex.Single;
 import io.reactivex.functions.Action;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.LongConsumer;
@@ -38,7 +39,7 @@ public abstract class PublisherAdder<V> {
 
     public abstract RFuture<Boolean> add(Object o);
     
-    public Flowable<Boolean> addAll(Publisher<? extends V> c) {
+    public Single<Boolean> addAll(Publisher<? extends V> c) {
         final Flowable<? extends V> cc = Flowable.fromPublisher(c);
         final ReplayProcessor<Boolean> p = ReplayProcessor.create();
         return p.doOnRequest(new LongConsumer() {
@@ -83,7 +84,7 @@ public abstract class PublisherAdder<V> {
                     }
                 }, FlowableInternalHelper.RequestMax.INSTANCE);                
             }
-        });
+        }).singleOrError();
     }
 
 }

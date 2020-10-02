@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,15 @@ public class CompositeIterable<T> implements Iterable<T> {
 
     private List<Iterable<T>> iterablesList;
     private Iterable<T>[] iterables;
+    private int limit;
 
     public CompositeIterable(List<Iterable<T>> iterables) {
         this.iterablesList = iterables;
+    }
+
+    public CompositeIterable(List<Iterable<T>> iterables, int limit) {
+        this.iterablesList = iterables;
+        this.limit = limit;
     }
 
     public CompositeIterable(Iterable<T>... iterables) {
@@ -50,6 +56,6 @@ public class CompositeIterable<T> implements Iterable<T> {
             }
         }
         Iterator<Iterator<T>>  listIterator = iterators.iterator();
-        return new CompositeIterator<T>(listIterator);
+        return new CompositeIterator<T>(listIterator, limit);
     }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,12 +33,21 @@ import java.util.Set;
 public interface RLocalCachedMap<K, V> extends RMap<K, V>, RDestroyable {
     
     /**
-     * Pre-warm the cached values.  Not guaranteed to load ALL values, but statistically
-     * will preload approximately all (all if no concurrent mutating activity)
-     * Intended for use with no-eviction caches where entire maps are locally cached
+     * Pre-warm the cached entries. Not guaranteed to load ALL values, but statistically
+     * will preload approximately all (all if no concurrent mutating activity).
+     * Entries are loaded in a batch with size of 10 elements.
      */
     void preloadCache();
-    
+
+    /**
+     * Pre-warm the cached entries. Not guaranteed to load ALL values, but statistically
+     * will preload approximately all (all if no concurrent mutating activity)
+     * Entries are loaded in a batch. Batch size is defined by <code>count</code> param.
+     *
+     * @param count - size of batch
+     */
+    void preloadCache(int count);
+
     /**
      * Clears local cache across all instances
      * 

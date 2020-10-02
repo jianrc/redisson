@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,8 @@
  */
 package org.redisson.transaction;
 
-import java.util.List;
-import java.util.Set;
-
 import org.redisson.RedissonSet;
+import org.redisson.ScanIterator;
 import org.redisson.api.RCollectionAsync;
 import org.redisson.api.RFuture;
 import org.redisson.api.RLock;
@@ -30,6 +28,9 @@ import org.redisson.transaction.operation.TransactionalOperation;
 import org.redisson.transaction.operation.set.AddOperation;
 import org.redisson.transaction.operation.set.MoveOperation;
 import org.redisson.transaction.operation.set.RemoveOperation;
+
+import java.util.List;
+import java.util.Set;
 
 /**
  * 
@@ -52,7 +53,7 @@ public class TransactionalSet<V> extends BaseTransactionalSet<V> {
     @Override
     protected ListScanResult<Object> scanIteratorSource(String name, RedisClient client, long startPos,
             String pattern, int count) {
-        return ((RedissonSet<?>) set).scanIterator(name, client, startPos, pattern, count);
+        return ((ScanIterator) set).scanIterator(name, client, startPos, pattern, count);
     }
 
     @Override
@@ -61,8 +62,8 @@ public class TransactionalSet<V> extends BaseTransactionalSet<V> {
     }
     
     @Override
-    protected TransactionalOperation createAddOperation(V value) {
-        return new AddOperation(set, value, transactionId);
+    protected TransactionalOperation createAddOperation(V value, long threadId) {
+        return new AddOperation(set, value, transactionId, threadId);
     }
     
     @Override
@@ -71,13 +72,13 @@ public class TransactionalSet<V> extends BaseTransactionalSet<V> {
     }
 
     @Override
-    protected TransactionalOperation createRemoveOperation(Object value) {
-        return new RemoveOperation(set, value, transactionId);
+    protected TransactionalOperation createRemoveOperation(Object value, long threadId) {
+        return new RemoveOperation(set, value, transactionId, threadId);
     }
 
     @Override
     protected RLock getLock(RCollectionAsync<V> set, V value) {
-        String lockName = ((RedissonSet<V>) set).getLockName(value, "lock");
+        String lockName = ((RedissonSet<V>) set).getLockByValue(value, "lock");
         return new RedissonTransactionalLock(commandExecutor, lockName, transactionId);
     }
     

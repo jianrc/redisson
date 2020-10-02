@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ public class JMutableEntry<K, V> implements MutableEntry<K, V> {
         if (value != null) {
             action = Action.READ;
         } else if (isReadThrough) {
-            value = jCache.load(key);
+            value = jCache.loadValue(key);
             if (value != null) {
                 action = Action.LOADED;
             }

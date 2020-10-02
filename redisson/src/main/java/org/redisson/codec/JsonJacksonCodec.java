@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -152,14 +152,6 @@ public class JsonJacksonCodec extends BaseCodec {
         mapTyper.init(JsonTypeInfo.Id.CLASS, null);
         mapTyper.inclusion(JsonTypeInfo.As.PROPERTY);
         mapObjectMapper.setDefaultTyping(mapTyper);
-        
-        // warm up codec
-        try {
-            byte[] s = mapObjectMapper.writeValueAsBytes(1);
-            mapObjectMapper.readValue(s, Object.class);
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     protected void init(ObjectMapper objectMapper) {

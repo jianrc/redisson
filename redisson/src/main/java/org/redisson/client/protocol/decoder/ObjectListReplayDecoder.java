@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package org.redisson.client.protocol.decoder;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.redisson.client.handler.State;
@@ -28,24 +29,26 @@ import org.redisson.client.protocol.Decoder;
  */
 public class ObjectListReplayDecoder<T> implements MultiDecoder<List<T>> {
 
-    private final Decoder<Object> decoder;
-    
+    private final boolean reverse;
+
     public ObjectListReplayDecoder() {
-        this(null);
+        this(false);
     }
-    
-    public ObjectListReplayDecoder(Decoder<Object> decoder) {
-        super();
-        this.decoder = decoder;
+
+    public ObjectListReplayDecoder(boolean reverse) {
+        this.reverse = reverse;
     }
 
     @Override
     public List<T> decode(List<Object> parts, State state) {
+        if (reverse) {
+            Collections.reverse(parts);
+        }
         return (List<T>) parts;
     }
 
     @Override
     public Decoder<Object> getDecoder(int paramNum, State state) {
-        return decoder;
+        return null;
     }
 }

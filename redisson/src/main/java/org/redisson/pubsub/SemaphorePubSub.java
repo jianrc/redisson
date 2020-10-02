@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,10 @@ import org.redisson.misc.RPromise;
  *
  */
 public class SemaphorePubSub extends PublishSubscribe<RedissonLockEntry> {
+
+    public SemaphorePubSub(PublishSubscribeService service) {
+        super(service);
+    }
 
     @Override
     protected RedissonLockEntry createEntry(RPromise<RedissonLockEntry> newPromise) {

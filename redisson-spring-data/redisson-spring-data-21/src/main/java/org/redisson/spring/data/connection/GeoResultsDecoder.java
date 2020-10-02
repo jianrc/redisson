@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,14 @@
  */
 package org.redisson.spring.data.connection;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.redisson.client.handler.State;
 import org.redisson.client.protocol.Decoder;
-import org.redisson.client.protocol.decoder.ListMultiDecoder;
 import org.redisson.client.protocol.decoder.MultiDecoder;
-import org.springframework.data.geo.Distance;
-import org.springframework.data.geo.GeoResult;
-import org.springframework.data.geo.GeoResults;
-import org.springframework.data.geo.Metric;
-import org.springframework.data.geo.Point;
+import org.springframework.data.geo.*;
 import org.springframework.data.redis.connection.RedisGeoCommands.GeoLocation;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 
@@ -49,7 +44,7 @@ public class GeoResultsDecoder implements MultiDecoder<GeoResults<GeoLocation<by
 
     @Override
     public Decoder<Object> getDecoder(int paramNum, State state) {
-        return ListMultiDecoder.RESET;
+        return null;
     }
     
     @Override
@@ -64,7 +59,7 @@ public class GeoResultsDecoder implements MultiDecoder<GeoResults<GeoLocation<by
                     result.add(new GeoResult<GeoLocation<byte[]>>(location, new Distance((Double)vals.get(1), metric)));
                 } else {
                     GeoLocation<byte[]> location = new GeoLocation<byte[]>((byte[])vals.get(0), (Point)vals.get(1));
-                    result.add(new GeoResult<GeoLocation<byte[]>>(location, null));
+                    result.add(new GeoResult<GeoLocation<byte[]>>(location, new Distance(0)));
                 }
             } else {
                 GeoLocation<byte[]> location = new GeoLocation<byte[]>((byte[])object, null);

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ public class PingConnectionHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelActive(final ChannelHandlerContext ctx) throws Exception {
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
         RedisConnection connection = RedisConnection.getFrom(ctx.channel());
         connection.getConnectionPromise().onComplete((res, e) -> {
             if (e == null) {
@@ -59,17 +59,28 @@ public class PingConnectionHandler extends ChannelInboundHandlerAdapter {
         ctx.fireChannelActive();
     }
 
-    protected void sendPing(final ChannelHandlerContext ctx) {
-        final RedisConnection connection = RedisConnection.getFrom(ctx.channel());
-        final RFuture<String> future = connection.async(StringCodec.INSTANCE, RedisCommands.PING);
-        
+    private void sendPing(ChannelHandlerContext ctx) {
+        RedisConnection connection = RedisConnection.getFrom(ctx.channel());
+        CommandData<?, ?> commandData = connection.getCurrentCommand();
+        RFuture<String> future;
+        if (commandData == null || !commandData.isBlockingCommand()) {
+            future = connection.async(StringCodec.INSTANCE, RedisCommands.PING);
+        } else {
+            future = null;
+        }
+
         config.getTimer().newTimeout(new TimerTask() {
             @Override
             public void run(Timeout timeout) throws Exception {
-                CommandData<?, ?> commandData = connection.getCurrentCommand();
-                if ((commandData == null || !commandData.isBlockingCommand()) 
+                if (connection.isClosed()) {
+                    return;
+                }
+                if (future != null
                         && (future.cancel(false) || !future.isSuccess())) {
                     ctx.channel().close();
+                    if (future.cause() != null && !future.isCancelled()) {
+                        log.error("Unable to send PING command over channel: " + ctx.channel(), future.cause());
+                    }
                     log.debug("channel: {} closed due to PING response timeout set in {} ms", ctx.channel(), config.getPingConnectionInterval());
                 } else {
                     sendPing(ctx);

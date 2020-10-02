@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,21 +36,23 @@ public abstract class MapOperation extends TransactionalOperation {
     Object oldValue;
     RMap<?, ?> map;
     String transactionId;
-    
+    long threadId;
+
     public MapOperation() {
     }
     
-    public MapOperation(RMap<?, ?> map, Object key, Object value, String transactionId) {
-        this(map, key, value, null, transactionId);
+    public MapOperation(RMap<?, ?> map, Object key, Object value, String transactionId, long threadId) {
+        this(map, key, value, null, transactionId, threadId);
     }
     
-    public MapOperation(RMap<?, ?> map, Object key, Object value, Object oldValue, String transactionId) {
+    public MapOperation(RMap<?, ?> map, Object key, Object value, Object oldValue, String transactionId, long threadId) {
         super(map.getName(), map.getCodec());
         this.map = map;
         this.key = key;
         this.value = value;
         this.oldValue = oldValue;
         this.transactionId = transactionId;
+        this.threadId = threadId;
     }
 
     public Object getKey() {
@@ -65,24 +67,24 @@ public abstract class MapOperation extends TransactionalOperation {
     public final void commit(CommandAsyncExecutor commandExecutor) {
         RMap<Object, Object> map = getMap(commandExecutor);
         commit(map);
-        getLock(map, commandExecutor, key).unlockAsync();
+        getLock(map, commandExecutor, key).unlockAsync(threadId);
     }
 
     protected RMap<Object, Object> getMap(CommandAsyncExecutor commandExecutor) {
         if (map instanceof RMapCache) {
-            return new RedissonMapCache<Object, Object>(codec, null, commandExecutor, name, null, null);
+            return new RedissonMapCache<>(codec, null, commandExecutor, name, null, null, null);
         }
-        return new RedissonMap<Object, Object>(codec, commandExecutor, name, null, null);
+        return new RedissonMap<>(codec, commandExecutor, name, null, null, null);
     }
     
     @Override
     public void rollback(CommandAsyncExecutor commandExecutor) {
         RMap<Object, Object> map = getMap(commandExecutor);
-        getLock(map, commandExecutor, key).unlockAsync();
+        getLock(map, commandExecutor, key).unlockAsync(threadId);
     }
 
     protected RLock getLock(RMap<?, ?> map, CommandAsyncExecutor commandExecutor, Object key) {
-        String lockName = ((RedissonMap<?, ?>) map).getLockName(key, "lock");
+        String lockName = ((RedissonMap<?, ?>) map).getLockByMapKey(key, "lock");
         return new RedissonTransactionalLock(commandExecutor, lockName, transactionId);
     }
     

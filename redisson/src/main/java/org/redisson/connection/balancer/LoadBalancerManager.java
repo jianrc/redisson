@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 package org.redisson.connection.balancer;
 
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -39,8 +38,8 @@ import org.redisson.connection.pool.PubSubConnectionPool;
 import org.redisson.connection.pool.SlaveConnectionPool;
 import org.redisson.misc.CountableListener;
 import org.redisson.misc.RPromise;
+import org.redisson.misc.RedisURI;
 import org.redisson.misc.RedissonPromise;
-import org.redisson.misc.URIBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,7 +95,13 @@ public class LoadBalancerManager {
     public Collection<ClientConnectionsEntry> getEntries() {
         return Collections.unmodifiableCollection(client2Entry.values());
     }
-    
+
+    public int getAvailableSlaves() {
+        return (int) client2Entry.values().stream()
+                                            .filter(e -> !e.isFreezed() && e.getNodeType() == NodeType.SLAVE)
+                                            .count();
+    }
+
     public int getAvailableClients() {
         int count = 0;
         for (ClientConnectionsEntry connectionEntry : client2Entry.values()) {
@@ -107,19 +112,19 @@ public class LoadBalancerManager {
         return count;
     }
 
-    public boolean unfreeze(URI address, FreezeReason freezeReason) {
+    public boolean unfreeze(RedisURI address, FreezeReason freezeReason) {
         ClientConnectionsEntry entry = getEntry(address);
         if (entry == null) {
-            throw new IllegalStateException("Can't find " + address + " in slaves!");
+            throw new IllegalStateException("Can't find " + address + " in slaves! Available slaves: " + client2Entry.keySet());
         }
 
         return unfreeze(entry, freezeReason);
     }
     
-    public boolean unfreeze(InetSocketAddress address, FreezeReason freezeReason) {
+    public boolean  unfreeze(InetSocketAddress address, FreezeReason freezeReason) {
         ClientConnectionsEntry entry = getEntry(address);
         if (entry == null) {
-            throw new IllegalStateException("Can't find " + address + " in slaves!");
+            throw new IllegalStateException("Can't find " + address + " in slaves! Available slaves: " + client2Entry.keySet());
         }
 
         return unfreeze(entry, freezeReason);
@@ -130,11 +135,10 @@ public class LoadBalancerManager {
             if (!entry.isFreezed()) {
                 return false;
             }
-            if ((freezeReason == FreezeReason.RECONNECT
-                    && entry.getFreezeReason() == FreezeReason.RECONNECT)
-                        || freezeReason != FreezeReason.RECONNECT) {
+
+            if (freezeReason != FreezeReason.RECONNECT
+                    || entry.getFreezeReason() == FreezeReason.RECONNECT) {
                 entry.resetFirstFail();
-                entry.setFreezed(false);
                 entry.setFreezeReason(null);
                 
                 slaveConnectionPool.initConnections(entry);
@@ -145,7 +149,7 @@ public class LoadBalancerManager {
         return false;
     }
     
-    public ClientConnectionsEntry freeze(URI address, FreezeReason freezeReason) {
+    public ClientConnectionsEntry freeze(RedisURI address, FreezeReason freezeReason) {
         ClientConnectionsEntry connectionEntry = getEntry(address);
         return freeze(connectionEntry, freezeReason);
     }
@@ -164,18 +168,18 @@ public class LoadBalancerManager {
         }
 
         synchronized (connectionEntry) {
+            if (connectionEntry.isFreezed()) {
+                return null;
+            }
+
             // only RECONNECT freeze reason could be replaced
             if (connectionEntry.getFreezeReason() == null
                     || connectionEntry.getFreezeReason() == FreezeReason.RECONNECT
                         || (freezeReason == FreezeReason.MANAGER 
                                 && connectionEntry.getFreezeReason() != FreezeReason.MANAGER 
                                     && connectionEntry.getNodeType() == NodeType.SLAVE)) {
-                connectionEntry.setFreezed(true);
                 connectionEntry.setFreezeReason(freezeReason);
                 return connectionEntry;
-            }
-            if (connectionEntry.isFreezed()) {
-                return null;
             }
         }
 
@@ -190,12 +194,12 @@ public class LoadBalancerManager {
         return getEntry(addr) != null;
     }
 
-    public boolean isUnfreezed(URI addr) {
+    public boolean isUnfreezed(RedisURI addr) {
         ClientConnectionsEntry entry = getEntry(addr);
         return !entry.isFreezed();
     }
     
-    public boolean contains(URI addr) {
+    public boolean contains(RedisURI addr) {
         return getEntry(addr) != null;
     }
 
@@ -203,10 +207,10 @@ public class LoadBalancerManager {
         return getEntry(redisClient) != null;
     }
 
-    private ClientConnectionsEntry getEntry(URI addr) {
+    private ClientConnectionsEntry getEntry(RedisURI addr) {
         for (ClientConnectionsEntry entry : client2Entry.values()) {
             InetSocketAddress entryAddr = entry.getClient().getAddr();
-            if (URIBuilder.compare(entryAddr, addr)) {
+            if (RedisURI.compare(entryAddr, addr)) {
                 return entry;
             }
         }
@@ -227,7 +231,7 @@ public class LoadBalancerManager {
         return client2Entry.get(redisClient);
     }
 
-    public RFuture<RedisConnection> getConnection(RedisCommand<?> command, URI addr) {
+    public RFuture<RedisConnection> getConnection(RedisCommand<?> command, RedisURI addr) {
         ClientConnectionsEntry entry = getEntry(addr);
         if (entry != null) {
             return slaveConnectionPool.get(command, entry);

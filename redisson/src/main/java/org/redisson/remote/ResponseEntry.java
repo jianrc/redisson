@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,20 +33,20 @@ public class ResponseEntry {
     public static class Result {
         
         private final RPromise<? extends RRemoteServiceResponse> promise;
-        private final ScheduledFuture<?> scheduledFuture;
+        private final ScheduledFuture<?> responseTimeoutFuture;
         
-        public Result(RPromise<? extends RRemoteServiceResponse> promise, ScheduledFuture<?> scheduledFuture) {
+        public Result(RPromise<? extends RRemoteServiceResponse> promise, ScheduledFuture<?> responseTimeoutFuture) {
             super();
             this.promise = promise;
-            this.scheduledFuture = scheduledFuture;
+            this.responseTimeoutFuture = responseTimeoutFuture;
         }
         
         public <T extends RRemoteServiceResponse> RPromise<T> getPromise() {
             return (RPromise<T>) promise;
         }
         
-        public ScheduledFuture<?> getScheduledFuture() {
-            return scheduledFuture;
+        public ScheduledFuture<?> getResponseTimeoutFuture() {
+            return responseTimeoutFuture;
         }
         
     }

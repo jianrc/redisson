@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,23 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import org.redisson.api.map.MapLoader;
 import org.redisson.api.map.MapWriter;
 
+import io.reactivex.Completable;
 import io.reactivex.Flowable;
+import io.reactivex.Maybe;
+import io.reactivex.Single;
 
 /**
- *  map functions
+ * RxJava2 interface for Redis based implementation
+ * of {@link java.util.concurrent.ConcurrentMap} and {@link java.util.Map}
+ * <p>
+ * This map uses serialized state of key instead of hashCode or equals methods.
+ * This map doesn't allow to store <code>null</code> as key or value.
  *
  * @author Nikita Koksharov
  *
@@ -36,13 +45,56 @@ import io.reactivex.Flowable;
 public interface RMapRx<K, V> extends RExpirableRx {
 
     /**
+     * Associates specified key with the given value if key isn't already associated with a value.
+     * Otherwise, replaces the associated value with the results of the given
+     * remapping function, or removes if the result is {@code null}.
+     *
+     * @param key - map key
+     * @param value - value to be merged with the existing value
+     *        associated with the key or to be associated with the key,
+     *        if no existing value
+     * @param remappingFunction - the function is invoked with the existing value to compute new value
+     * @return new value associated with the specified key or
+     *         {@code null} if no value associated with the key
+     */
+    Maybe<V> merge(K key, V value, BiFunction<? super V, ? super V, ? extends V> remappingFunction);
+
+    /**
+     * Computes a new mapping for the specified key and its current mapped value.
+     *
+     * @param key - map key
+     * @param remappingFunction - function to compute a value
+     * @return the new value associated with the specified key, or {@code null} if none
+     */
+    Maybe<V> compute(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction);
+
+    /**
+     * Computes a mapping for the specified key if it's not mapped before.
+     *
+     * @param key - map key
+     * @param mappingFunction - function to compute a value
+     * @return current or new computed value associated with
+     *         the specified key, or {@code null} if the computed value is null
+     */
+    Maybe<V> computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction);
+
+    /**
+     * Computes a mapping for the specified key only if it's already mapped.
+     *
+     * @param key - map key
+     * @param remappingFunction - function to compute a value
+     * @return the new value associated with the specified key, or null if none
+     */
+    Maybe<V> computeIfPresent(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction);
+
+    /**
      * Loads all map entries to this Redis map using {@link org.redisson.api.map.MapLoader}.
      * 
      * @param replaceExistingValues - <code>true</code> if existed values should be replaced, <code>false</code> otherwise.  
      * @param parallelism - parallelism level, used to increase speed of process execution
      * @return void
      */
-    Flowable<Void> loadAll(boolean replaceExistingValues, int parallelism);
+    Completable loadAll(boolean replaceExistingValues, int parallelism);
     
     /**
      * Loads map entries using {@link org.redisson.api.map.MapLoader} whose keys are listed in defined <code>keys</code> parameter.
@@ -52,7 +104,7 @@ public interface RMapRx<K, V> extends RExpirableRx {
      * @param parallelism - parallelism level, used to increase speed of process execution
      * @return void
      */
-    Flowable<Void> loadAll(Set<? extends K> keys, boolean replaceExistingValues, int parallelism);
+    Completable loadAll(Set<? extends K> keys, boolean replaceExistingValues, int parallelism);
 
     /**
      * Returns size of value mapped by key in bytes
@@ -60,11 +112,10 @@ public interface RMapRx<K, V> extends RExpirableRx {
      * @param key - map key
      * @return size of value
      */
-    Flowable<Integer> valueSize(K key);
+    Single<Integer> valueSize(K key);
 
     /**
-     * Gets a map slice contained the mappings with defined <code>keys</code>
-     * by one operation.
+     * Returns map slice contained the mappings with defined <code>keys</code>.
      * <p>
      * If map doesn't contain value/values for specified key/keys and {@link MapLoader} is defined 
      * then value/values will be loaded in read-through mode. 
@@ -74,59 +125,94 @@ public interface RMapRx<K, V> extends RExpirableRx {
      * @param keys - map keys
      * @return Map slice
      */
-    Flowable<Map<K, V>> getAll(Set<K> keys);
+    Single<Map<K, V>> getAll(Set<K> keys);
 
     /**
-     * Associates the specified <code>value</code> with the specified <code>key</code>
-     * in batch.
+     * Stores map entries specified in <code>map</code> object in batch mode.
      * <p>
-     * If {@link MapWriter} is defined then new map entries are stored in write-through mode. 
+     * If {@link MapWriter} is defined then map entries will be stored in write-through mode.
      *
      * @param map mappings to be stored in this map
      * @return void
      */
-    Flowable<Void> putAll(Map<? extends K, ? extends V> map);
-
-    Flowable<V> addAndGet(K key, Number value);
-
-    Flowable<Boolean> containsValue(Object value);
-
-    Flowable<Boolean> containsKey(Object key);
-
-    Flowable<Integer> size();
+    Completable putAll(Map<? extends K, ? extends V> map);
 
     /**
-     * Removes <code>keys</code> from map by one operation in async manner.
+     * Adds the given <code>delta</code> to the current value
+     * by mapped <code>key</code>.
+     *
+     * Works only for <b>numeric</b> values!
+     *
+     * @param key - map key
+     * @param delta the value to add
+     * @return the updated value
+     */
+    Single<V> addAndGet(K key, Number delta);
+
+    /**
+     * Returns <code>true</code> if this map contains any map entry
+     * with specified <code>value</code>, otherwise <code>false</code>
+     *
+     * @param value - map value
+     * @return <code>true</code> if this map contains any map entry
+     *          with specified <code>value</code>, otherwise <code>false</code>
+     */
+    Single<Boolean> containsValue(Object value);
+
+    /**
+     * Returns <code>true</code> if this map contains map entry
+     * mapped by specified <code>key</code>, otherwise <code>false</code>
+     *
+     * @param key - map key
+     * @return <code>true</code> if this map contains map entry
+     *          mapped by specified <code>key</code>, otherwise <code>false</code>
+     */
+    Single<Boolean> containsKey(Object key);
+
+    /**
+     * Returns size of this map
+     *
+     * @return size
+     */
+    Single<Integer> size();
+
+    /**
+     * Removes map entries mapped by specified <code>keys</code>.
      * <p>
-     * Works faster than <code>{@link #remove(Object, Object)}</code> but doesn't return
-     * the value associated with <code>key</code>.
+     * Works faster than <code>{@link #remove(Object)}</code> but not returning
+     * the value.
      * <p>
      * If {@link MapWriter} is defined then <code>keys</code>are deleted in write-through mode.
      *
      * @param keys - map keys
      * @return the number of keys that were removed from the hash, not including specified but non existing keys
      */
-    Flowable<Long> fastRemove(K... keys);
+    Single<Long> fastRemove(K... keys);
 
     /**
-     * Associates the specified <code>value</code> with the specified <code>key</code>
-     * in async manner.
+     * Stores the specified <code>value</code> mapped by specified <code>key</code>.
      * <p>
      * Works faster than <code>{@link #put(Object, Object)}</code> but not returning
-     * the previous value associated with <code>key</code>
+     * previous value.
      * <p>
-     * If {@link MapWriter} is defined then new map entry is stored in write-through mode.
+     * Returns <code>true</code> if key is a new key in the hash and value was set or
+     * <code>false</code> if key already exists in the hash and the value was updated.
+     * <p>
+     * If {@link MapWriter} is defined then map entry is stored in write-through mode.
      *
      * @param key - map key
      * @param value - map value
-     * @return <code>true</code> if key is a new one in the hash and value was set.
+     * @return <code>true</code> if key is a new key in the hash and value was set.
      *         <code>false</code> if key already exists in the hash and the value was updated.
      */
-    Flowable<Boolean> fastPut(K key, V value);
+    Single<Boolean> fastPut(K key, V value);
 
     /**
-     * Associates the specified <code>value</code> with the specified <code>key</code>
-     * only if there is no any association with specified<code>key</code>.
+     * Stores the specified <code>value</code> mapped by specified <code>key</code>
+     * only if there is no value with specified<code>key</code> stored before.
+     * <p>
+     * Returns <code>true</code> if key is a new one in the hash and value was set or
+     * <code>false</code> if key already exists in the hash and change hasn't been made.
      * <p>
      * Works faster than <code>{@link #putIfAbsent(Object, Object)}</code> but not returning
      * the previous value associated with <code>key</code>
@@ -138,87 +224,85 @@ public interface RMapRx<K, V> extends RExpirableRx {
      * @return <code>true</code> if key is a new one in the hash and value was set.
      *         <code>false</code> if key already exists in the hash and change hasn't been made.
      */
-    Flowable<Boolean> fastPutIfAbsent(K key, V value);
+    Single<Boolean> fastPutIfAbsent(K key, V value);
     
     /**
      * Read all keys at once
      *
      * @return keys
      */
-    Flowable<Set<K>> readAllKeySet();
+    Single<Set<K>> readAllKeySet();
 
     /**
      * Read all values at once
      *
      * @return values
      */
-    Flowable<Collection<V>> readAllValues();
+    Single<Collection<V>> readAllValues();
 
     /**
      * Read all map entries at once
      *
      * @return entries
      */
-    Flowable<Set<Entry<K, V>>> readAllEntrySet();
+    Single<Set<Entry<K, V>>> readAllEntrySet();
 
     /**
      * Read all map as local instance at once
      *
      * @return map
      */
-    Flowable<Map<K, V>> readAllMap();
+    Single<Map<K, V>> readAllMap();
 
     /**
-     * Returns the value to which the specified key is mapped,
-     * or {@code null} if this map contains no mapping for the key.
+     * Returns the value mapped by defined <code>key</code> or {@code null} if value is absent.
      * <p>
-     * If map doesn't contain value for specified key and {@link MapLoader} is defined 
-     * then value will be loaded in read-through mode. 
+     * If map doesn't contain value for specified key and {@link MapLoader} is defined
+     * then value will be loaded in read-through mode.
      *
-     * @param key the key whose associated value is to be returned
-     * @return the value to which the specified key is mapped, or
-     *         {@code null} if this map contains no mapping for the key
+     * @param key the key
+     * @return the value mapped by defined <code>key</code> or {@code null} if value is absent
      */
-    Flowable<V> get(K key);
+    Maybe<V> get(K key);
 
     /**
-     * Associates the specified <code>value</code> with the specified <code>key</code>
-     * in async manner.
+     * Stores the specified <code>value</code> mapped by specified <code>key</code>.
+     * Returns previous value if map entry with specified <code>key</code> already existed.
      * <p>
-     * If {@link MapWriter} is defined then new map entry is stored in write-through mode.
+     * If {@link MapWriter} is defined then map entry is stored in write-through mode.
      *
      * @param key - map key
      * @param value - map value
      * @return previous associated value
      */
-    Flowable<V> put(K key, V value);
+    Maybe<V> put(K key, V value);
 
     /**
-     * Removes <code>key</code> from map and returns associated value in async manner.
+     * Removes map entry by specified <code>key</code> and returns value.
      * <p>
      * If {@link MapWriter} is defined then <code>key</code>is deleted in write-through mode.
      *
      * @param key - map key
-     * @return deleted value or <code>null</code> if there wasn't any association
+     * @return deleted value, <code>null</code> if map entry doesn't exist
      */
-    Flowable<V> remove(K key);
+    Maybe<V> remove(K key);
 
     /**
-     * Replaces previous value with a new <code>value</code> associated with the <code>key</code>.
-     * If there wasn't any association before then method returns <code>null</code>.
+     * Replaces previous value with a new <code>value</code> mapped by specified <code>key</code>.
+     * Returns <code>null</code> if there is no map entry stored before and doesn't store new map entry.
      * <p>
      * If {@link MapWriter} is defined then new <code>value</code>is written in write-through mode.
      *
      * @param key - map key
      * @param value - map value
-     * @return previous associated value 
-     *         or <code>null</code> if there wasn't any association and change hasn't been made
+     * @return previous associated value
+     *         or <code>null</code> if there is no map entry stored before and doesn't store new map entry
      */
-    Flowable<V> replace(K key, V value);
+    Maybe<V> replace(K key, V value);
 
     /**
-     * Replaces previous <code>oldValue</code> with a <code>newValue</code> associated with the <code>key</code>.
-     * If previous value doesn't exist or equal to <code>oldValue</code> then method returns <code>false</code>.
+     * Replaces previous <code>oldValue</code> with a <code>newValue</code> mapped by specified <code>key</code>.
+     * Returns <code>false</code> if previous value doesn't exist or equal to <code>oldValue</code>.
      * <p>
      * If {@link MapWriter} is defined then <code>newValue</code>is written in write-through mode.
      *
@@ -227,22 +311,22 @@ public interface RMapRx<K, V> extends RExpirableRx {
      * @param newValue - map new value
      * @return <code>true</code> if value has been replaced otherwise <code>false</code>.
      */
-    Flowable<Boolean> replace(K key, V oldValue, V newValue);
+    Single<Boolean> replace(K key, V oldValue, V newValue);
 
     /**
-     * Removes <code>key</code> from map only if it associated with <code>value</code>.
+     * Removes map entry only if it exists with specified <code>key</code> and <code>value</code>.
      * <p>
      * If {@link MapWriter} is defined then <code>key</code>is deleted in write-through mode.
      *
      * @param key - map key
      * @param value - map value
-     * @return <code>true</code> if map entry has been replaced otherwise <code>false</code>.
+     * @return <code>true</code> if map entry has been removed otherwise <code>false</code>.
      */
-    Flowable<Boolean> remove(Object key, Object value);
+    Single<Boolean> remove(Object key, Object value);
 
     /**
-     * Associates the specified <code>value</code> with the specified <code>key</code>
-     * only if there is no any association with specified<code>key</code>.
+     * Stores the specified <code>value</code> mapped by specified <code>key</code>
+     * only if there is no value with specified<code>key</code> stored before.
      * <p>
      * If {@link MapWriter} is defined then new map entry is stored in write-through mode.
      *
@@ -251,7 +335,7 @@ public interface RMapRx<K, V> extends RExpirableRx {
      * @return <code>null</code> if key is a new one in the hash and value was set.
      *         Previous value if key already exists in the hash and change hasn't been made.
      */
-    Flowable<V> putIfAbsent(K key, V value);
+    Maybe<V> putIfAbsent(K key, V value);
 
     /**
      * Returns iterator over map entries collection. 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,12 @@ package org.redisson.api;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * Asynchronous interface for Redis based Rate Limiter object.
  * 
  * @author Nikita Koksharov
  *
  */
-public interface RRateLimiterAsync extends RObjectAsync {
+public interface RRateLimiterAsync extends RExpirableAsync {
 
     /**
      * Initializes RateLimiter's state and stores config to Redis server.
@@ -141,12 +142,33 @@ public interface RRateLimiterAsync extends RObjectAsync {
      *         if the waiting time elapsed before a permit was acquired
      */
     RFuture<Boolean> tryAcquireAsync(long permits, long timeout, TimeUnit unit);
-    
+
+
+    /**
+     * Updates RateLimiter's state and stores config to Redis server.
+     *
+     *
+     * @param mode - rate mode
+     * @param rate - rate
+     * @param rateInterval - rate time interval
+     * @param rateIntervalUnit - rate time interval unit
+     * @return {@code true} if rate was set and {@code false}
+     *         otherwise
+     */
+    RFuture<Void> setRateAsync(RateType mode, long rate, long rateInterval, RateIntervalUnit rateIntervalUnit);
+
     /**
      * Returns current configuration of this RateLimiter object.
      * 
      * @return config object
      */
     RFuture<RateLimiterConfig> getConfigAsync();
-    
+
+    /**
+     * Returns amount of available permits.
+     *
+     * @return number of permits
+     */
+    RFuture<Long> availablePermitsAsync();
+
 }

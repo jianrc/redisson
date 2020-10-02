@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@ package org.redisson.api;
 
 import java.util.concurrent.TimeUnit;
 
-import io.reactivex.Flowable;
+import io.reactivex.Completable;
+import io.reactivex.Maybe;
+import io.reactivex.Single;
 
 /**
- * RxJava2 interface for Semaphore object with support of lease time parameter for each acquired permit.
+ * RxJava2 interface for Semaphore object with lease time parameter support for each acquired permit.
  * 
  * <p>Each permit identified by own id and could be released only using its id.
  * Permit id is a 128-bits unique random identifier generated each time during acquiring.
@@ -51,7 +53,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * 
      * @return permit id
      */
-    Flowable<String> acquire();
+    Single<String> acquire();
     
     /**
      * Acquires a permit with defined lease time from this semaphore, 
@@ -75,7 +77,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @param unit - time unit
      * @return permit id
      */
-    Flowable<String> acquire(long leaseTime, TimeUnit unit);
+    Single<String> acquire(long leaseTime, TimeUnit unit);
     
     /**
      * Acquires a permit only if one is available at the
@@ -91,7 +93,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @return permit id if a permit was acquired and {@code null}
      *         otherwise
      */
-    Flowable<String> tryAcquire();
+    Maybe<String> tryAcquire();
 
     /**
      * Acquires a permit from this semaphore, if one becomes available
@@ -124,7 +126,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @return permit id if a permit was acquired and {@code null}
      *         if the waiting time elapsed before a permit was acquired
      */
-    Flowable<String> tryAcquire(long waitTime, TimeUnit unit);
+    Maybe<String> tryAcquire(long waitTime, TimeUnit unit);
 
     /**
      * Acquires a permit with defined lease time from this semaphore,
@@ -159,7 +161,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @return permit id if a permit was acquired and {@code null}
      *         if the waiting time elapsed before a permit was acquired
      */
-    Flowable<String> tryAcquire(long waitTime, long leaseTime, TimeUnit unit);
+    Maybe<String> tryAcquire(long waitTime, long leaseTime, TimeUnit unit);
 
     /**
      * Releases a permit by its id, returning it to the semaphore.
@@ -177,7 +179,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @return {@code true} if a permit has been released and {@code false}
      *         otherwise
      */
-    Flowable<Boolean> tryRelease(String permitId);
+    Single<Boolean> tryRelease(String permitId);
 
     /**
      * Releases a permit by its id, returning it to the semaphore.
@@ -196,14 +198,14 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @param permitId - permit id
      * @return void
      */
-    Flowable<Void> release(String permitId);
+    Completable release(String permitId);
 
     /**
      * Returns the current number of available permits.
      *
      * @return number of available permits
      */
-    Flowable<Integer> availablePermits();
+    Single<Integer> availablePermits();
 
     /**
      * Sets number of permits.
@@ -211,7 +213,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @param permits - number of permits
      * @return <code>true</code> if permits has been set successfully, otherwise <code>false</code>.  
      */
-    Flowable<Boolean> trySetPermits(int permits);
+    Single<Boolean> trySetPermits(int permits);
 
     /**
      * Increases or decreases the number of available permits by defined value. 
@@ -219,7 +221,7 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @param permits - number of permits to add/remove
      * @return void
      */
-    Flowable<Void> addPermits(int permits);
+    Completable addPermits(int permits);
 
     /**
      * Overrides and updates lease time for defined permit id.
@@ -229,6 +231,6 @@ public interface RPermitExpirableSemaphoreRx extends RExpirableRx {
      * @param unit - the time unit of the {@code timeout} argument
      * @return <code>true</code> if permits has been updated successfully, otherwise <code>false</code>.
      */
-    Flowable<Boolean> updateLeaseTime(String permitId, long leaseTime, TimeUnit unit);
+    Single<Boolean> updateLeaseTime(String permitId, long leaseTime, TimeUnit unit);
     
 }

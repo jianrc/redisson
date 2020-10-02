@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,10 @@ public class LockPubSub extends PublishSubscribe<RedissonLockEntry> {
     public static final Long UNLOCK_MESSAGE = 0L;
     public static final Long READ_UNLOCK_MESSAGE = 1L;
 
+    public LockPubSub(PublishSubscribeService service) {
+        super(service);
+    }
+    
     @Override
     protected RedissonLockEntry createEntry(RPromise<RedissonLockEntry> newPromise) {
         return new RedissonLockEntry(newPromise);

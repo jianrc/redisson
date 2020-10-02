@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package org.redisson.api;
 
 import java.util.Deque;
+import java.util.List;
 
 /**
  * Distributed implementation of {@link java.util.Deque}
@@ -26,5 +27,36 @@ import java.util.Deque;
  */
 public interface RDeque<V> extends Deque<V>, RQueue<V>, RDequeAsync<V> {
 
+    /**
+     * Adds element at the head of existing deque.
+     *
+     * @param elements - elements to add
+     * @return length of the list
+     */
+    int addFirstIfExists(V... elements);
+
+    /**
+     * Adds element at the tail of existing deque.
+     *
+     * @param elements - elements to add
+     * @return length of the list
+     */
+    int addLastIfExists(V... elements);
+
+    /**
+     * Retrieves and removes the tail elements of this queue.
+     * Elements amount limited by <code>limit</code> param.
+     *
+     * @return list of tail elements
+     */
+    List<V> pollLast(int limit);
+
+    /**
+     * Retrieves and removes the head elements of this queue.
+     * Elements amount limited by <code>limit</code> param.
+     *
+     * @return list of head elements
+     */
+    List<V> pollFirst(int limit);
 
 }

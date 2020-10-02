@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,17 @@
  */
 package org.redisson.cache;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.util.CharsetUtil;
 import org.redisson.client.codec.BaseCodec;
 import org.redisson.client.handler.State;
 import org.redisson.client.protocol.Decoder;
 import org.redisson.client.protocol.Encoder;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.util.CharsetUtil;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 
@@ -42,7 +41,10 @@ public class LocalCachedMessageCodec extends BaseCodec {
         public Object decode(ByteBuf buf, State state) throws IOException {
             byte type = buf.readByte();
             if (type == 0x0) {
-                return new LocalCachedMapClear();
+                byte[] id = new byte[16];
+                buf.readBytes(id);
+                boolean releaseSemaphore = buf.readBoolean();
+                return new LocalCachedMapClear(id, releaseSemaphore);
             }
             
             if (type == 0x1) {
@@ -116,8 +118,11 @@ public class LocalCachedMessageCodec extends BaseCodec {
         @Override
         public ByteBuf encode(Object in) throws IOException {
             if (in instanceof LocalCachedMapClear) {
+                LocalCachedMapClear li = (LocalCachedMapClear) in; 
                 ByteBuf result = ByteBufAllocator.DEFAULT.buffer(1);
                 result.writeByte(0x0);
+                result.writeBytes(li.getRequestId());
+                result.writeBoolean(li.isReleaseSemaphore());
                 return result;
             }
             if (in instanceof LocalCachedMapInvalidate) {

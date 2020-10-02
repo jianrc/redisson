@@ -1,20 +1,73 @@
 package org.redisson;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.Assert;
+import org.junit.Test;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.WriteRedisConnectionException;
+import org.redisson.config.Config;
+import org.redisson.connection.balancer.RandomLoadBalancer;
 
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 
-import org.junit.Assert;
-import org.junit.Test;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-
-import static org.awaitility.Awaitility.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 public class RedissonLockTest extends BaseConcurrentTest {
+
+    static class LockWithoutBoolean extends Thread {
+        private CountDownLatch latch;
+        private RedissonClient redisson;
+
+        public LockWithoutBoolean(String name, CountDownLatch latch, RedissonClient redisson) {
+            super(name);
+            this.latch = latch;
+            this.redisson = redisson;
+        }
+
+        public void run() {
+            RLock lock = redisson.getLock("lock");
+            lock.lock(10, TimeUnit.MINUTES);
+            System.out.println(Thread.currentThread().getName() + " gets lock. and interrupt: " + Thread.currentThread().isInterrupted());
+            try {
+                TimeUnit.MINUTES.sleep(1);
+            } catch (InterruptedException e) {
+                latch.countDown();
+                Thread.currentThread().interrupt();
+            } finally {
+                try {
+                    lock.unlock();
+                } finally {
+                    latch.countDown();
+                }
+            }
+            System.out.println(Thread.currentThread().getName() + " ends.");
+        }
+    }
+
+    @Test(expected = WriteRedisConnectionException.class)
+    public void testRedisFailed() throws IOException, InterruptedException {
+        RedisRunner.RedisProcess master = new RedisRunner()
+                .port(6377)
+                .nosave()
+                .randomDir()
+                .run();
+
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://127.0.0.1:6377");
+        RedissonClient redisson = Redisson.create(config);
+
+        RLock lock = redisson.getLock("myLock");
+        // kill RedisServer while main thread is sleeping.
+        master.stop();
+        Thread.sleep(3000);
+        lock.tryLock(5, 10, TimeUnit.SECONDS);
+    }
 
     @Test
     public void testTryLockWait() throws InterruptedException {
@@ -31,14 +84,20 @@ public class RedissonLockTest extends BaseConcurrentTest {
     }
     
     @Test
-    public void testDelete() {
-        RLock lock = redisson.getLock("lock");
-        Assert.assertFalse(lock.delete());
+    public void testLockUninterruptibly() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(2);
+        Thread thread_1 = new LockWithoutBoolean("thread-1", latch, redisson);
+        Thread thread_2 = new LockWithoutBoolean("thread-2", latch, redisson);
+        thread_1.start();
 
-        lock.lock();
-        Assert.assertTrue(lock.delete());
+        TimeUnit.SECONDS.sleep(1); // let thread-1 get the lock
+        thread_2.start();
+        TimeUnit.SECONDS.sleep(1); // let thread_2 waiting for the lock
+        thread_2.interrupt(); // interrupte the thread-2
+        boolean res = latch.await(2, TimeUnit.SECONDS);
+        assertThat(res).isFalse();
     }
-
+    
     @Test
     public void testForceUnlock() {
         RLock lock = redisson.getLock("lock");
@@ -69,8 +128,44 @@ public class RedissonLockTest extends BaseConcurrentTest {
         t.start();
         t.join();
 
-        lock.unlock();
+        assertThatThrownBy(() -> {
+            lock.unlock();
+        }).isInstanceOf(IllegalMonitorStateException.class);
     }
+
+    @Test
+    public void testInCluster() throws Exception {
+        RedisRunner master1 = new RedisRunner().port(6890).randomDir().nosave();
+        RedisRunner master2 = new RedisRunner().port(6891).randomDir().nosave();
+        RedisRunner master3 = new RedisRunner().port(6892).randomDir().nosave();
+        RedisRunner slave1 = new RedisRunner().port(6900).randomDir().nosave();
+        RedisRunner slave2 = new RedisRunner().port(6901).randomDir().nosave();
+        RedisRunner slave3 = new RedisRunner().port(6902).randomDir().nosave();
+
+        ClusterRunner clusterRunner = new ClusterRunner()
+                .addNode(master1, slave1)
+                .addNode(master2, slave2)
+                .addNode(master3, slave3);
+        ClusterRunner.ClusterProcesses process = clusterRunner.run();
+
+        Thread.sleep(5000);
+
+        Config config = new Config();
+        config.useClusterServers()
+        .setLoadBalancer(new RandomLoadBalancer())
+        .addNodeAddress(process.getNodes().stream().findAny().get().getRedisServerAddressAndPort());
+        RedissonClient redisson = Redisson.create(config);
+
+        RLock lock = redisson.getLock("myLock");
+        lock.lock();
+        assertThat(lock.isLocked()).isTrue();
+        lock.unlock();
+        assertThat(lock.isLocked()).isFalse();
+
+        redisson.shutdown();
+        process.shutdown();
+    }
+
 
     @Test
     public void testAutoExpire() throws InterruptedException {

@@ -2,6 +2,7 @@ package org.redisson;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -10,16 +11,50 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.redisson.api.RList;
-import org.redisson.api.SortOrder;
+import org.redisson.api.*;
+import org.redisson.api.listener.ListAddListener;
 import org.redisson.client.RedisException;
 import org.redisson.client.codec.IntegerCodec;
 import org.redisson.client.codec.StringCodec;
+import org.redisson.config.Config;
 
 public class RedissonListTest extends BaseTest {
+
+    @Test
+    public void testAddListener() throws RedisRunner.FailedToStartRedisException, IOException, InterruptedException {
+        RedisRunner.RedisProcess instance = new RedisRunner()
+                .nosave()
+                .randomPort()
+                .randomDir()
+                .notifyKeyspaceEvents(
+                                    RedisRunner.KEYSPACE_EVENTS_OPTIONS.E,
+                                    RedisRunner.KEYSPACE_EVENTS_OPTIONS.l)
+                .run();
+
+        Config config = new Config();
+        config.useSingleServer().setAddress(instance.getRedisServerAddressAndPort());
+        RedissonClient redisson = Redisson.create(config);
+
+        RList<Integer> al = redisson.getList("name");
+        CountDownLatch latch = new CountDownLatch(1);
+        al.addListener(new ListAddListener() {
+            @Override
+            public void onListAdd(String name) {
+                latch.countDown();
+            }
+        });
+        al.add(1);
+
+        assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
+
+        redisson.shutdown();
+        instance.stop();
+    }
 
     @Test
     public void testGet() {
@@ -32,6 +67,23 @@ public class RedissonListTest extends BaseTest {
         list.add(6);
         
         assertThat(list.get(1, 2, 3)).containsSequence(2, 3, 4);
+    }
+    
+    @Test
+    public void testRange() {
+        RList<Integer> list = redisson.getList("list", IntegerCodec.INSTANCE);
+        list.add(1);
+        list.add(2);
+        list.add(3);
+        list.add(4);
+        list.add(5);
+
+        assertThat(list.range(1)).containsExactly(1, 2);
+        assertThat(list.range(1, 3)).containsExactly(2, 3, 4);
+        
+        list.delete();
+        
+        assertThat(list.range(0, 2)).isEmpty();
     }
     
     @Test
@@ -725,14 +777,14 @@ public class RedissonListTest extends BaseTest {
         list.add(10);
 
         List<Integer> subList = list.subList(3, 7);
-        assertThat(subList.iterator()).containsExactly(4, 5, 6, 7);
+        assertThat(subList.iterator()).toIterable().containsExactly(4, 5, 6, 7);
 
         subList.clear();
         assertThat(list).containsExactly(1, 2, 3, 8, 9, 10);
         assertThat(subList.size()).isZero();
 
         List<Integer> subList2 = list.subList(3, 6);
-        assertThat(subList2.iterator()).containsExactly(8, 9, 10);
+        assertThat(subList2.iterator()).toIterable().containsExactly(8, 9, 10);
     }
 
     @Test
@@ -802,7 +854,7 @@ public class RedissonListTest extends BaseTest {
         list.add(10);
 
         List<Integer> subList = list.subList(3, 7);
-        assertThat(subList.iterator()).containsExactly(4, 5, 6, 7);
+        assertThat(subList.iterator()).toIterable().containsExactly(4, 5, 6, 7);
 
         for (Iterator<Integer> iterator = subList.iterator(); iterator.hasNext();) {
             Integer num = iterator.next();
@@ -811,7 +863,7 @@ public class RedissonListTest extends BaseTest {
             }
         }
 
-        assertThat(subList.iterator()).containsExactly(4, 6, 7);
+        assertThat(subList.iterator()).toIterable().containsExactly(4, 6, 7);
 
         ListIterator<Integer> iterator = subList.listIterator();
         assertThat(iterator.hasPrevious()).isFalse();
@@ -865,16 +917,16 @@ public class RedissonListTest extends BaseTest {
         list.add(8);
 
         List<Integer> subList = list.subList(2, 6);
-        assertThat(subList.iterator()).containsExactly(3, 4, 5, 6);
+        assertThat(subList.iterator()).toIterable().containsExactly(3, 4, 5, 6);
         assertThat(subList.size()).isEqualTo(4);
         Integer val = subList.remove(2);
         assertThat(val).isEqualTo(5);
 
-        assertThat(subList.iterator()).containsExactly(3, 4, 6);
+        assertThat(subList.iterator()).toIterable().containsExactly(3, 4, 6);
 
         Integer val1 = subList.remove(2);
         assertThat(val1).isEqualTo(6);
-        assertThat(subList.iterator()).containsExactly(3, 4);
+        assertThat(subList.iterator()).toIterable().containsExactly(3, 4);
     }
 
 

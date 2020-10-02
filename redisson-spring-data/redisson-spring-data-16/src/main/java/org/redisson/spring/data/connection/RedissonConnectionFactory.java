@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.redisson.spring.data.connection;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.redisson.Redisson;
+import org.redisson.RedissonKeys;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.RedisClient;
 import org.redisson.client.protocol.RedisCommands;
@@ -107,7 +108,7 @@ public class RedissonConnectionFactory implements RedisConnectionFactory, Initia
             throw new InvalidDataAccessResourceUsageException("Redisson is not in Sentinel mode");
         }
         
-        SentinelConnectionManager manager = ((SentinelConnectionManager)((Redisson)redisson).getConnectionManager());
+        SentinelConnectionManager manager = ((SentinelConnectionManager)((RedissonKeys)redisson.getKeys()).getConnectionManager());
         for (RedisClient client : manager.getSentinels()) {
             org.redisson.client.RedisConnection connection = client.connect();
             try {

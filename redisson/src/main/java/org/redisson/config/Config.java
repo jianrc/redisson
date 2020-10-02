@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,24 @@
  */
 package org.redisson.config;
 
+import io.netty.channel.EventLoopGroup;
+import org.redisson.client.DefaultNettyHook;
+import org.redisson.client.NettyHook;
+import org.redisson.client.codec.Codec;
+import org.redisson.codec.MarshallingCodec;
+import org.redisson.connection.AddressResolverGroupFactory;
+import org.redisson.connection.ConnectionManager;
+import org.redisson.connection.DnsAddressResolverGroupFactory;
+import org.redisson.connection.ReplicatedConnectionManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.net.URL;
 import java.util.concurrent.ExecutorService;
-
-import org.redisson.client.codec.Codec;
-import org.redisson.codec.FstCodec;
-import org.redisson.connection.AddressResolverGroupFactory;
-import org.redisson.connection.ConnectionManager;
-import org.redisson.connection.DnsAddressResolverGroupFactory;
-import org.redisson.connection.ReplicatedConnectionManager;
-import org.redisson.misc.URIBuilder;
-
-import io.netty.channel.EventLoopGroup;
 
 /**
  * Redisson configuration
@@ -39,6 +41,8 @@ import io.netty.channel.EventLoopGroup;
  *
  */
 public class Config {
+
+    static final Logger log = LoggerFactory.getLogger(Config.class);
 
     private SentinelServersConfig sentinelServersConfig;
 
@@ -60,7 +64,7 @@ public class Config {
     private int nettyThreads = 32;
 
     /**
-     * Redis key/value codec. JsonJacksonCodec used by default
+     * Redis key/value codec. FST codec is used by default
      */
     private Codec codec;
 
@@ -84,6 +88,16 @@ public class Config {
 
     private boolean useScriptCache = false;
 
+    private int minCleanUpDelay = 5;
+
+    private int maxCleanUpDelay = 30*60;
+
+    private int cleanUpKeysAmount = 100;
+
+    private NettyHook nettyHook = new DefaultNettyHook();
+
+    private boolean useThreadClassLoader = true;
+
     /**
      * AddressResolverGroupFactory switch between default and round robin
      */
@@ -92,18 +106,19 @@ public class Config {
     public Config() {
     }
 
-    static {
-        URIBuilder.patchUriObject();
-    }
-
     public Config(Config oldConf) {
+        setNettyHook(oldConf.getNettyHook());
         setExecutor(oldConf.getExecutor());
 
         if (oldConf.getCodec() == null) {
             // use it by default
-            oldConf.setCodec(new FstCodec());
+            oldConf.setCodec(new MarshallingCodec());
         }
 
+        setUseThreadClassLoader(oldConf.isUseThreadClassLoader());
+        setMinCleanUpDelay(oldConf.getMinCleanUpDelay());
+        setMaxCleanUpDelay(oldConf.getMaxCleanUpDelay());
+        setCleanUpKeysAmount(oldConf.getCleanUpKeysAmount());
         setDecodeInExecutor(oldConf.isDecodeInExecutor());
         setUseScriptCache(oldConf.isUseScriptCache());
         setKeepPubSubOrder(oldConf.isKeepPubSubOrder());
@@ -137,8 +152,23 @@ public class Config {
 
     }
 
+    public NettyHook getNettyHook() {
+        return nettyHook;
+    }
+
     /**
-     * Redis key/value codec. Default is json-codec
+     * Netty hook applied to Netty Bootstrap and Channel objects.
+     *
+     * @param nettyHook - netty hook object
+     * @return config
+     */
+    public Config setNettyHook(NettyHook nettyHook) {
+        this.nettyHook = nettyHook;
+        return this;
+    }
+
+    /**
+     * Redis key/value codec. Default is FST codec
      *
      * @see org.redisson.client.codec.Codec
      * 
@@ -485,7 +515,7 @@ public class Config {
 
     /**
      * This parameter is only used if lock has been acquired without leaseTimeout parameter definition. 
-     * Lock will be expired after <code>lockWatchdogTimeout</code> if watchdog 
+     * Lock expires after <code>lockWatchdogTimeout</code> if watchdog 
      * didn't extend it to next <code>lockWatchdogTimeout</code> time interval.
      * <p>  
      * This prevents against infinity locked locks due to Redisson client crush or 
@@ -541,85 +571,50 @@ public class Config {
         return addressResolverGroupFactory;
     }
 
-    /**
-     * Read config object stored in JSON format from <code>String</code>
-     *
-     * @param content of config
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(String content) throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(content, Config.class);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>InputStream</code>
-     *
-     * @param inputStream object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(InputStream inputStream) throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(inputStream, Config.class);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>File</code>
-     *
-     * @param file object
-     * @param classLoader class loader 
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(File file, ClassLoader classLoader) throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(file, Config.class, classLoader);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>File</code>
-     *
-     * @param file object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(File file) throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         return fromJSON(file, null);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>URL</code>
-     *
-     * @param url object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(URL url) throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(url, Config.class);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>Reader</code>
-     *
-     * @param reader object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(Reader reader) throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(reader, Config.class);
     }
 
-    /**
-     * Convert current configuration to JSON format
-     *
-     * @return config in json format
-     * @throws IOException error
-     */
+    @Deprecated
     public String toJSON() throws IOException {
+        log.error("Spring XML configuration is deprecated and will be removed in future!");
         ConfigSupport support = new ConfigSupport();
         return support.toJSON(this);
     }
@@ -734,9 +729,85 @@ public class Config {
      * @param decodeInExecutor - <code>true</code> to use executor's threads, <code>false</code> to use netty's threads.
      * @return config
      */
+    @Deprecated
     public Config setDecodeInExecutor(boolean decodeInExecutor) {
         this.decodeInExecutor = decodeInExecutor;
         return this;
     }
 
+    public int getMinCleanUpDelay() {
+        return minCleanUpDelay;
+    }
+    
+    /**
+     * Defines minimum delay in seconds for clean up process of expired entries.
+     * <p>
+     * Applied to JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects.
+     * <p>
+     * Default is <code>5</code>.
+     * 
+     * @param minCleanUpDelay - delay in seconds
+     * @return config
+     */
+    public Config setMinCleanUpDelay(int minCleanUpDelay) {
+        this.minCleanUpDelay = minCleanUpDelay;
+        return this;
+    }
+
+    public int getMaxCleanUpDelay() {
+        return maxCleanUpDelay;
+    }
+    
+    /**
+     * Defines maximum delay in seconds for clean up process of expired entries.
+     * <p>
+     * Applied to JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects.
+     * <p>
+     * Default is <code>1800</code>.
+     *
+     * @param maxCleanUpDelay - delay in seconds
+     * @return config
+     */
+    public Config setMaxCleanUpDelay(int maxCleanUpDelay) {
+        this.maxCleanUpDelay = maxCleanUpDelay;
+        return this;
+    }
+
+    public int getCleanUpKeysAmount() {
+        return cleanUpKeysAmount;
+    }
+
+    /**
+     * Defines expired keys amount deleted per single operation during clean up process of expired entries.
+     * <p>
+     * Applied to JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects.
+     * <p>
+     * Default is <code>100</code>.
+     *
+     * @param cleanUpKeysAmount - delay in seconds
+     * @return config
+     */
+    public Config setCleanUpKeysAmount(int cleanUpKeysAmount) {
+        this.cleanUpKeysAmount = cleanUpKeysAmount;
+        return this;
+    }
+
+    public boolean isUseThreadClassLoader() {
+        return useThreadClassLoader;
+    }
+
+    /**
+     * Defines whether to supply Thread ContextClassLoader to Codec.
+     * Usage of Thread.getContextClassLoader() may resolve ClassNotFoundException error.
+     * For example, this error arise if Redisson is used in both Tomcat and deployed application.
+     * <p>
+     * Default is <code>true</code>.
+     *
+     * @param useThreadClassLoader <code>true</code> if Thread ContextClassLoader is used, <code>false</code> otherwise.
+     * @return config
+     */
+    public Config setUseThreadClassLoader(boolean useThreadClassLoader) {
+        this.useThreadClassLoader = useThreadClassLoader;
+        return this;
+    }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
  */
 package org.redisson.client.handler;
 
-import org.redisson.client.protocol.decoder.DecoderState;
-
 /**
  * 
  * @author Nikita Koksharov
@@ -25,7 +23,6 @@ import org.redisson.client.protocol.decoder.DecoderState;
 public class State {
 
     private int batchIndex;
-    private DecoderState decoderState;
 
     private int level = -1;
 
@@ -51,18 +48,9 @@ public class State {
         return batchIndex;
     }
 
-    public <T extends DecoderState> T getDecoderState() {
-        return (T) decoderState;
-    }
-    public void setDecoderState(DecoderState decoderState) {
-        this.decoderState = decoderState;
-    }
-
     @Override
     public String toString() {
-        return "State [batchIndex=" + batchIndex + ", decoderState=" + decoderState + ", level=" + level + "]";
+        return "State [batchIndex=" + batchIndex + ", level=" + level + "]";
     }
 
-    
-    
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,10 @@ public class RedissonExceptionConverter implements Converter<Exception, DataAcce
             return new ClusterRedirectException(ex.getSlot(), ex.getUrl().getHost(), ex.getUrl().getPort(), source);
         }
 
+        if (source instanceof RedisTimeoutException) {
+            return new QueryTimeoutException(source.getMessage(), source);
+        }
+
         if (source instanceof RedisException) {
             return new InvalidDataAccessApiUsageException(source.getMessage(), source);
         }
@@ -52,10 +56,6 @@ public class RedissonExceptionConverter implements Converter<Exception, DataAcce
             return (DataAccessException) source;
         }
         
-        if (source instanceof RedisTimeoutException) {
-            return new QueryTimeoutException(source.getMessage(), source);
-        }
-
         return null;
     }
 

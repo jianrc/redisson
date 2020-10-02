@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,7 @@
  */
 package org.redisson.api;
 
-import java.util.concurrent.TimeUnit;
-
 import org.redisson.client.codec.Codec;
-
 import reactor.core.publisher.Mono;
 
 /**
@@ -367,41 +364,5 @@ public interface RBatchReactive {
      * @return List with result object for each command
      */
     Mono<BatchResult<?>> execute();
-
-    /*
-     * Use BatchOptions#atomic
-     */
-    @Deprecated
-    RBatchReactive atomic();
-
-    /*
-     * Use BatchOptions#skipResult
-     */
-    @Deprecated
-    RBatchReactive skipResult();
-
-    /*
-     * Use BatchOptions#syncSlaves
-     */
-    @Deprecated
-    RBatchReactive syncSlaves(int slaves, long timeout, TimeUnit unit);
-    
-    /*
-     * Use BatchOptions#responseTimeout
-     */
-    @Deprecated
-    RBatchReactive timeout(long timeout, TimeUnit unit);
-
-    /*
-     * Use BatchOptions#retryInterval
-     */
-    @Deprecated
-    RBatchReactive retryInterval(long retryInterval, TimeUnit unit);
-
-    /*
-     * Use BatchOptions#retryAttempts
-     */
-    @Deprecated
-    RBatchReactive retryAttempts(int retryAttempts);
 
 }

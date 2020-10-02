@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,29 +15,25 @@
  */
 package org.redisson.tomcat;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.UUID;
-
-import javax.servlet.http.HttpSession;
-
-import org.apache.catalina.LifecycleException;
-import org.apache.catalina.LifecycleState;
-import org.apache.catalina.Session;
+import org.apache.catalina.*;
 import org.apache.catalina.session.ManagerBase;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.redisson.Redisson;
 import org.redisson.api.RMap;
+import org.redisson.api.RSet;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.listener.MessageListener;
+import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.codec.CompositeCodec;
 import org.redisson.config.Config;
+
+import javax.servlet.http.HttpSession;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
 
 /**
  * Redisson Session Manager for Apache Tomcat
@@ -59,8 +55,13 @@ public class RedissonSessionManager extends ManagerBase {
     private UpdateMode updateMode = UpdateMode.DEFAULT;
 
     private String keyPrefix = "";
+    private boolean broadcastSessionEvents = false;
 
     private final String nodeId = UUID.randomUUID().toString();
+
+    private MessageListener messageListener;
+    
+    private Codec codecToUse;
 
     public String getNodeId() { return nodeId; }
 
@@ -72,6 +73,14 @@ public class RedissonSessionManager extends ManagerBase {
         this.updateMode = UpdateMode.valueOf(updateMode);
     }
 
+    public boolean isBroadcastSessionEvents() {
+        return broadcastSessionEvents;
+    }
+    
+    public void setBroadcastSessionEvents(boolean replicateSessionEvents) {
+        this.broadcastSessionEvents = replicateSessionEvents;
+    }
+    
     public String getReadMode() {
         return readMode.toString();
     }
@@ -111,27 +120,32 @@ public class RedissonSessionManager extends ManagerBase {
 
     @Override
     public Session createSession(String sessionId) {
-        RedissonSession session = (RedissonSession) createEmptySession();
+        Session session = super.createSession(sessionId);
         
-        session.setNew(true);
-        session.setValid(true);
-        session.setCreationTime(System.currentTimeMillis());
-        session.setMaxInactiveInterval(getContext().getSessionTimeout() * 60);
-
-        if (sessionId == null) {
-            sessionId = generateSessionId();
+        if (broadcastSessionEvents) {
+            getTopic().publish(new SessionCreatedMessage(getNodeId(), session.getId()));
+            session.addSessionListener(new SessionListener() {
+                @Override
+                public void sessionEvent(SessionEvent event) {
+                    if (event.getType() == Session.SESSION_DESTROYED_EVENT) {
+                        getTopic().publish(new SessionDestroyedMessage(getNodeId(), session.getId()));
+                    }
+                }
+            });
         }
-        
-        session.setManager(this);
-        session.setId(sessionId);
-        
         return session;
     }
 
+    public RSet<String> getNotifiedNodes(String sessionId) {
+        String separator = keyPrefix == null || keyPrefix.isEmpty() ? "" : ":";
+        String name = keyPrefix + separator + "redisson:tomcat_notified_nodes:" + sessionId;
+        return redisson.getSet(name, StringCodec.INSTANCE);
+    }
+    
     public RMap<String, Object> getMap(String sessionId) {
         String separator = keyPrefix == null || keyPrefix.isEmpty() ? "" : ":";
         String name = keyPrefix + separator + "redisson:tomcat_session:" + sessionId;
-        return redisson.getMap(name, new CompositeCodec(StringCodec.INSTANCE, redisson.getConfig().getCodec()));
+        return redisson.getMap(name, new CompositeCodec(StringCodec.INSTANCE, codecToUse, codecToUse));
     }
 
     public RTopic getTopic() {
@@ -142,29 +156,28 @@ public class RedissonSessionManager extends ManagerBase {
     
     @Override
     public Session findSession(String id) throws IOException {
+        return findSession(id, true);
+    }
+    
+    private Session findSession(String id, boolean notify) throws IOException {
         Session result = super.findSession(id);
         if (result == null) {
             if (id != null) {
                 Map<String, Object> attrs = new HashMap<String, Object>();
                 try {
-                    if (readMode == ReadMode.MEMORY) {
-                        attrs = getMap(id).readAllMap();
-                    } else {
-                        attrs = getMap(id).getAll(RedissonSession.ATTRS);
-                    }
+                    attrs = getMap(id).getAll(RedissonSession.ATTRS);
                 } catch (Exception e) {
-                    log.error("Can't read session object by id " + id, e);
+                    log.error("Can't read session object by id: " + id, e);
                 }
-                
-                if (attrs.isEmpty() || !Boolean.valueOf(String.valueOf(attrs.get("session:isValid")))) {
+
+                if (attrs.isEmpty() || (broadcastSessionEvents && getNotifiedNodes(id).contains(nodeId))) {
                     log.info("Session " + id + " can't be found");
-                    return null;
+                    return null;    
                 }
                 
                 RedissonSession session = (RedissonSession) createEmptySession();
-                session.setId(id);
-                session.setManager(this);
                 session.load(attrs);
+                session.setId(id, notify);
                 
                 session.access();
                 session.endAccess();
@@ -181,7 +194,7 @@ public class RedissonSessionManager extends ManagerBase {
     
     @Override
     public Session createEmptySession() {
-        return new RedissonSession(this, readMode, updateMode);
+        return new RedissonSession(this, readMode, updateMode, broadcastSessionEvents);
     }
     
     @Override
@@ -209,28 +222,64 @@ public class RedissonSessionManager extends ManagerBase {
         redisson = buildClient();
         
         final ClassLoader applicationClassLoader;
-        if (Thread.currentThread().getContextClassLoader() != null) {
+        if (getContext().getLoader().getClassLoader() != null) {
+            applicationClassLoader = getContext().getLoader().getClassLoader();
+        } else if (Thread.currentThread().getContextClassLoader() != null) {
             applicationClassLoader = Thread.currentThread().getContextClassLoader();
         } else {
             applicationClassLoader = getClass().getClassLoader();
         }
         
-        if (updateMode == UpdateMode.AFTER_REQUEST) {
-            getEngine().getPipeline().addValve(new UpdateValve(this));
+        Codec codec = redisson.getConfig().getCodec();
+        try {
+            codecToUse = codec.getClass()
+                    .getConstructor(ClassLoader.class, codec.getClass())
+                    .newInstance(applicationClassLoader, codec);
+        } catch (Exception e) {
+            throw new LifecycleException(e);
         }
         
-        if (readMode == ReadMode.MEMORY) {
+        Pipeline pipeline = getEngine().getPipeline();
+        synchronized (pipeline) {
+            if (readMode == ReadMode.REDIS) {
+                Optional<Valve> res = Arrays.stream(pipeline.getValves()).filter(v -> v.getClass() == UsageValve.class).findAny();
+                if (res.isPresent()) {
+                    ((UsageValve)res.get()).incUsage();
+                } else {
+                    pipeline.addValve(new UsageValve());
+                }
+            }
+            if (updateMode == UpdateMode.AFTER_REQUEST) {
+                Optional<Valve> res = Arrays.stream(pipeline.getValves()).filter(v -> v.getClass() == UpdateValve.class).findAny();
+                if (res.isPresent()) {
+                    ((UpdateValve)res.get()).incUsage();
+                } else {
+                    pipeline.addValve(new UpdateValve());
+                }
+            }
+        }
+        
+        if (readMode == ReadMode.MEMORY || broadcastSessionEvents) {
             RTopic updatesTopic = getTopic();
-            updatesTopic.addListener(AttributeMessage.class, new MessageListener<AttributeMessage>() {
+            messageListener = new MessageListener<AttributeMessage>() {
                 
                 @Override
                 public void onMessage(CharSequence channel, AttributeMessage msg) {
                     try {
-                        // TODO make it thread-safe
+                        if (msg.getNodeId().equals(nodeId)) {
+                            return;
+                        }
+
                         RedissonSession session = (RedissonSession) RedissonSessionManager.super.findSession(msg.getSessionId());
-                        if (session != null && !msg.getNodeId().equals(nodeId)) {
+                        if (session != null) {
+                            if (msg instanceof SessionDestroyedMessage) {
+                                session.expire();
+                            }
+                            
                             if (msg instanceof AttributeRemoveMessage) {
-                                session.superRemoveAttributeInternal(((AttributeRemoveMessage)msg).getName(), true);
+                                for (String name : ((AttributeRemoveMessage)msg).getNames()) {
+                                    session.superRemoveAttributeInternal(name, true);
+                                }
                             }
 
                             if (msg instanceof AttributesClearMessage) {
@@ -239,21 +288,41 @@ public class RedissonSessionManager extends ManagerBase {
                             
                             if (msg instanceof AttributesPutAllMessage) {
                                 AttributesPutAllMessage m = (AttributesPutAllMessage) msg;
-                                for (Entry<String, Object> entry : m.getAttrs(applicationClassLoader).entrySet()) {
-                                    session.superSetAttribute(entry.getKey(), entry.getValue(), true);
-                                }
+                                Map<String, Object> attrs = m.getAttrs(codecToUse.getMapValueDecoder());
+                                session.load(attrs);
                             }
                             
                             if (msg instanceof AttributeUpdateMessage) {
                                 AttributeUpdateMessage m = (AttributeUpdateMessage)msg;
-                                session.superSetAttribute(m.getName(), m.getValue(applicationClassLoader), true);
+                                session.superSetAttribute(m.getName(), m.getValue(codecToUse.getMapValueDecoder()), true);
                             }
+                        } else {
+                            if (msg instanceof SessionCreatedMessage) {
+                                Session s = findSession(msg.getSessionId());
+                                if (s == null) {
+                                    throw new IllegalStateException("Unable to find session: " + msg.getSessionId());
+                                }
+                            }
+                            
+                            if (msg instanceof SessionDestroyedMessage) {
+                                Session s = findSession(msg.getSessionId(), false);
+                                if (s == null) {
+                                    throw new IllegalStateException("Unable to find session: " + msg.getSessionId());
+                                }
+                                s.expire();
+                                RSet<String> set = getNotifiedNodes(msg.getSessionId());
+                                set.add(nodeId);
+                            }
+                            
                         }
+
                     } catch (Exception e) {
-                        log.error("Can't handle topic message", e);
+                        log.error("Unable to handle topic message", e);
                     }
                 }
-            });
+            };
+            
+            updatesTopic.addListener(AttributeMessage.class, messageListener);
         }
         
         setState(LifecycleState.STARTING);
@@ -286,6 +355,31 @@ public class RedissonSessionManager extends ManagerBase {
         
         setState(LifecycleState.STOPPING);
         
+        Pipeline pipeline = getEngine().getPipeline();
+        synchronized (pipeline) {
+            if (readMode == ReadMode.REDIS) {
+                Arrays.stream(pipeline.getValves()).filter(v -> v.getClass() == UsageValve.class).forEach(v -> {
+                    if (((UsageValve)v).decUsage() == 0){
+                        pipeline.removeValve(v);
+                    }
+                });
+            }
+            if (updateMode == UpdateMode.AFTER_REQUEST) {
+                Arrays.stream(pipeline.getValves()).filter(v -> v.getClass() == UpdateValve.class).forEach(v -> {
+                    if (((UpdateValve)v).decUsage() == 0){
+                        pipeline.removeValve(v);
+                    }
+                });
+            }
+        }
+        
+        if (messageListener != null) {
+             RTopic updatesTopic = getTopic();
+             updatesTopic.removeListener(messageListener);
+        }
+
+        codecToUse = null;
+
         try {
             shutdownRedisson();
         } catch (Exception e) {
@@ -305,11 +399,11 @@ public class RedissonSessionManager extends ManagerBase {
             return;
         }
         
-        if (updateMode == UpdateMode.AFTER_REQUEST) {
-            RedissonSession sess = (RedissonSession) super.findSession(session.getId());
-            if (sess != null) {
-                sess.save();
-            }
+        RedissonSession sess = (RedissonSession) super.findSession(session.getId());
+        if (sess != null) {
+            sess.access();
+            sess.endAccess();
+            sess.save();
         }
     }
     

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
  */
 package org.redisson.api;
 
+import java.util.concurrent.TimeUnit;
+
 /**
- * Distributed async implementation of {@link java.util.concurrent.CountDownLatch}
+ * Async interface of Redis based {@link java.util.concurrent.CountDownLatch}
  *
  * It has an advantage over {@link java.util.concurrent.CountDownLatch} --
  * count can be set via {@link #trySetCountAsync} method.
@@ -27,23 +29,33 @@ package org.redisson.api;
 public interface RCountDownLatchAsync extends RObjectAsync {
 
     /**
-     * Decrements the count of the latch, releasing all waiting threads if
-     * the count reaches zero.
+     * Waits until counter reach zero.
      *
-     * <p>If the current count is greater than zero then it is decremented.
-     * If the new count is zero then all waiting threads are re-enabled for
-     * thread scheduling purposes.
+     * @return void
      *
-     * <p>If the current count equals zero then nothing happens.
+     */
+    RFuture<Void> awaitAsync();
+
+    /**
+     * Waits until counter reach zero or up to defined <code>timeout</code>.
+     *
+     * @param waitTime the maximum time to wait
+     * @param unit the time unit
+     * @return <code>true</code> if the count reached zero and <code>false</code>
+     *         if timeout reached before the count reached zero
+     */
+    RFuture<Boolean> awaitAsync(long waitTime, TimeUnit unit);
+
+    /**
+     * Decrements the counter of the latch.
+     * Notifies all waiting threads when count reaches zero.
      * 
      * @return void
      */
     RFuture<Void> countDownAsync();
 
     /**
-     * Returns the current count.
-     *
-     * <p>This method is typically used for debugging and testing purposes.
+     * Returns value of current count.
      *
      * @return the current count
      */

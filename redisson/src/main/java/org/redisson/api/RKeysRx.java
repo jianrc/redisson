@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
  */
 package org.redisson.api;
 
-import java.util.Collection;
-import java.util.concurrent.TimeUnit;
-
+import io.reactivex.Completable;
 import io.reactivex.Flowable;
+import io.reactivex.Maybe;
+import io.reactivex.Single;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * 
@@ -34,7 +36,7 @@ public interface RKeysRx {
      * @param database - Redis database number
      * @return <code>true</code> if key was moved else <code>false</code>
      */
-    Flowable<Boolean> move(String name, int database);
+    Single<Boolean> move(String name, int database);
     
     /**
      * Transfer object from source Redis instance to destination Redis instance
@@ -46,7 +48,7 @@ public interface RKeysRx {
      * @param timeout - maximum idle time in any moment of the communication with the destination instance in milliseconds
      * @return void
      */
-    Flowable<Void> migrate(String name, String host, int port, int database, long timeout);
+    Completable migrate(String name, String host, int port, int database, long timeout);
     
     /**
      * Copy object from source Redis instance to destination Redis instance
@@ -58,7 +60,7 @@ public interface RKeysRx {
      * @param timeout - maximum idle time in any moment of the communication with the destination instance in milliseconds
      * @return void
      */
-    Flowable<Void> copy(String name, String host, int port, int database, long timeout);
+    Completable copy(String name, String host, int port, int database, long timeout);
     
     /**
      * Set a timeout for object. After the timeout has expired,
@@ -69,7 +71,7 @@ public interface RKeysRx {
      * @param timeUnit - timeout time unit
      * @return <code>true</code> if the timeout was set and <code>false</code> if not
      */
-    Flowable<Boolean> expire(String name, long timeToLive, TimeUnit timeUnit);
+    Single<Boolean> expire(String name, long timeToLive, TimeUnit timeUnit);
     
     /**
      * Set an expire date for object. When expire date comes
@@ -79,7 +81,7 @@ public interface RKeysRx {
      * @param timestamp - expire date in milliseconds (Unix timestamp)
      * @return <code>true</code> if the timeout was set and <code>false</code> if not
      */
-    Flowable<Boolean> expireAt(String name, long timestamp);
+    Single<Boolean> expireAt(String name, long timestamp);
     
     /**
      * Clear an expire timeout or expire date for object.
@@ -88,7 +90,7 @@ public interface RKeysRx {
      * @return <code>true</code> if timeout was removed
      *         <code>false</code> if object does not exist or does not have an associated timeout
      */
-    Flowable<Boolean> clearExpire(String name);
+    Single<Boolean> clearExpire(String name);
     
     /**
      * Rename object with <code>oldName</code> to <code>newName</code>
@@ -98,7 +100,7 @@ public interface RKeysRx {
      * @param newName - new name of object
      * @return <code>true</code> if object has been renamed successfully and <code>false</code> otherwise
      */
-    Flowable<Boolean> renamenx(String oldName, String newName);
+    Single<Boolean> renamenx(String oldName, String newName);
     
     /**
      * Rename current object key to <code>newName</code>
@@ -107,7 +109,7 @@ public interface RKeysRx {
      * @param newName - new name of object
      * @return void
      */
-    Flowable<Void> rename(String currentName, String newName);
+    Completable rename(String currentName, String newName);
     
     /**
      * Remaining time to live of Redisson object that has a timeout
@@ -117,7 +119,7 @@ public interface RKeysRx {
      *          -2 if the key does not exist.
      *          -1 if the key exists but has no associated expire.
      */
-    Flowable<Long> remainTimeToLive(String name);
+    Single<Long> remainTimeToLive(String name);
 
     /**
      * Update the last access time of an object. 
@@ -125,7 +127,7 @@ public interface RKeysRx {
      * @param names of keys
      * @return count of objects were touched
      */
-    Flowable<Long> touch(String... names);
+    Single<Long> touch(String... names);
     
     /**
      * Checks if provided keys exist
@@ -133,7 +135,7 @@ public interface RKeysRx {
      * @param names of keys
      * @return amount of existing keys
      */
-    Flowable<Long> countExists(String... names);
+    Single<Long> countExists(String... names);
     
     /**
      * Get Redis object type by key
@@ -141,7 +143,7 @@ public interface RKeysRx {
      * @param key - name of key
      * @return type of key
      */
-    Flowable<RType> getType(String key);
+    Single<RType> getType(String key);
     
     /**
      * Load keys in incrementally iterate mode. Keys traversed with SCAN operation.
@@ -204,22 +206,7 @@ public interface RKeysRx {
      * @param key - name of key
      * @return slot number
      */
-    Flowable<Integer> getSlot(String key);
-
-    /**
-     * Find keys by key search pattern by one Redis call.
-     *
-     * Uses <code>KEYS</code> Redis command.
-     *
-     *  Supported glob-style patterns:
-     *    h?llo subscribes to hello, hallo and hxllo
-     *    h*llo subscribes to hllo and heeeello
-     *    h[ae]llo subscribes to hello and hallo, but not hillo
-     *
-     * @param pattern - match pattern
-     * @return collection of keys
-     */
-    Flowable<Collection<String>> findKeysByPattern(String pattern);
+    Single<Integer> getSlot(String key);
 
     /**
      * Get random key
@@ -228,7 +215,7 @@ public interface RKeysRx {
      *
      * @return random key
      */
-    Flowable<String> randomKey();
+    Maybe<String> randomKey();
 
     /**
      * Delete multiple objects by a key pattern.
@@ -243,7 +230,7 @@ public interface RKeysRx {
      * @param pattern - match pattern
      * @return deleted objects amount
      */
-    Flowable<Long> deleteByPattern(String pattern);
+    Single<Long> deleteByPattern(String pattern);
 
     /**
      * Delete multiple objects by name.
@@ -253,7 +240,7 @@ public interface RKeysRx {
      * @param keys - object names
      * @return deleted objects amount
      */
-    Flowable<Long> delete(String... keys);
+    Single<Long> delete(String... keys);
 
     /**
      * Delete multiple objects by name.
@@ -264,14 +251,14 @@ public interface RKeysRx {
      * @param keys of objects
      * @return number of removed keys
      */
-    Flowable<Long> unlink(String... keys);
+    Single<Long> unlink(String... keys);
     
     /**
      * Returns the number of keys in the currently-selected database
      *
      * @return count of keys
      */
-    Flowable<Long> count();
+    Single<Long> count();
     
     /**
      * Delete all the keys of the currently selected database
@@ -280,7 +267,16 @@ public interface RKeysRx {
      * 
      * @return void
      */
-    Flowable<Void> flushdb();
+    Completable flushdb();
+
+    /**
+     * Swap two databases.
+     * <p>
+     * Requires Redis 4.0+
+     *
+     * @return void
+     */
+    Completable swapdb(int db1, int db2);
 
     /**
      * Delete all the keys of all the existing databases
@@ -289,6 +285,26 @@ public interface RKeysRx {
      *
      * @return void
      */
-    Flowable<Void> flushall();
+    Completable flushall();
+
+    /**
+     * Delete all keys of currently selected database
+     * in background without blocking server.
+     * <p>
+     * Requires Redis 4.0+
+     *
+     * @return void
+     */
+    Completable flushdbParallel();
+
+    /**
+     * Delete all keys of all existing databases
+     * in background without blocking server.
+     * <p>
+     * Requires Redis 4.0+
+     *
+     * @return void
+     */
+    Completable flushallParallel();
 
 }

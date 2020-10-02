@@ -3,17 +3,17 @@
 
     <groupId>org.redisson</groupId>
     <artifactId>redisson-parent</artifactId>
-    <version>3.10.4-SNAPSHOT</version>
+    <version>3.13.6-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Redisson</name>
-    <description>Redis based In-Memory Data Grid for Java</description>
+    <description>Redis Java client with features of In-Memory Data Grid</description>
     <inceptionYear>2014</inceptionYear>
     <url>http://redisson.org</url>
 
     <organization>
-       <name>The Redisson Project</name>
-       <url>http://redisson.org/</url>
+       <name>Redisson</name>
+       <url>https://redisson.org/</url>
     </organization>
 
     <properties>
@@ -31,10 +31,6 @@
         <tag>HEAD</tag>
     </scm>
 
-    <prerequisites>
-        <maven>3.0.5</maven>
-    </prerequisites>
-
     <licenses>
         <license>
             <name>Apache v2</name>
@@ -47,9 +43,8 @@
         <developer>
             <id>mrniko</id>
             <name>Nikita Koksharov</name>
-            <email>nkoksharov@redisson.org</email>
             <roles>
-                <role>Architect</role>
+                <role>Founder</role>
                 <role>Developer</role>
             </roles>
             <timezone>+4</timezone>
@@ -62,6 +57,7 @@
         <module>redisson-tomcat</module>
         <module>redisson-spring-data</module>
         <module>redisson-spring-boot-starter</module>
+        <module>redisson-mybatis</module>
         <!--<module>redisson-hibernate</module>-->
     </modules>
 
@@ -132,7 +128,14 @@
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
-                <version>4.1.33.Final</version>
+                <version>4.1.52.Final</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>2.11.1</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -147,7 +150,23 @@
       <sourceDirectory>${basedir}/src/main/java</sourceDirectory>
       <testSourceDirectory>${basedir}/src/test/java</testSourceDirectory>
 
-        <plugins>	
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Build-Time>${maven.build.timestamp}</Build-Time>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
 
        	<plugin>
        		<groupId>org.sonatype.plugins</groupId>
@@ -158,6 +177,7 @@
        			<serverId>ossrepo</serverId>
        			<nexusUrl>https://oss.sonatype.org/</nexusUrl>
        			<autoReleaseAfterClose>true</autoReleaseAfterClose>
+                <stagingProgressTimeoutMinutes>15</stagingProgressTimeoutMinutes>
        		</configuration>
        	</plugin>
 
@@ -228,7 +248,7 @@
                     <release>${release.version}</release>
 -->
                     <optimize>true</optimize>
-                    <showDeprecations>true</showDeprecations>
+                    <showDeprecation>true</showDeprecation>
                 </configuration>
                 <executions>
                     <execution>
@@ -260,9 +280,30 @@
          	</executions>
                 <configuration>
                     <level>public</level>
-                    <additionalparam>-Xdoclint:none</additionalparam>
+                    <doclint>none</doclint>
                     <quiet>true</quiet>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.0.0-M3</version>
+                <executions>
+                    <execution>
+                        <id>enforce-maven</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>3.0.5</version>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
   </build>

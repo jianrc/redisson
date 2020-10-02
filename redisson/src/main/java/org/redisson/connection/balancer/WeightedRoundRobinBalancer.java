@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 package org.redisson.connection.balancer;
 
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.redisson.connection.ClientConnectionsEntry;
-import org.redisson.misc.URIBuilder;
+import org.redisson.misc.RedisURI;
 
 /**
  * Weighted Round Robin balancer.
@@ -77,7 +76,7 @@ public class WeightedRoundRobinBalancer implements LoadBalancer {
      */
     public WeightedRoundRobinBalancer(Map<String, Integer> weights, int defaultWeight) {
         for (Entry<String, Integer> entry : weights.entrySet()) {
-            URI uri = URIBuilder.create(entry.getKey());
+            RedisURI uri = new RedisURI(entry.getKey());
             InetSocketAddress addr = new InetSocketAddress(uri.getHost(), uri.getPort());
             if (entry.getValue() <= 0) {
                 throw new IllegalArgumentException("Weight can't be less than or equal zero");

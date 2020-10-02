@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,12 +40,12 @@ public abstract class SetOperation extends TransactionalOperation {
     }
 
     protected RLock getLock(RSetCache<?> setCache, CommandAsyncExecutor commandExecutor, Object value) {
-        String lockName = ((RedissonSetCache<?>) setCache).getLockName(value, "lock");
+        String lockName = ((RedissonSetCache<?>) setCache).getLockByValue(value, "lock");
         return new RedissonTransactionalLock(commandExecutor, lockName, transactionId);
     }
 
     protected RLock getLock(RSet<?> setCache, CommandAsyncExecutor commandExecutor, Object value) {
-        String lockName = ((RedissonSet<?>) setCache).getLockName(value, "lock");
+        String lockName = ((RedissonSet<?>) setCache).getLockByValue(value, "lock");
         return new RedissonTransactionalLock(commandExecutor, lockName, transactionId);
     }
 

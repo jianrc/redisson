@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@ package org.redisson;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.redisson.api.RFuture;
 import org.redisson.api.RPriorityBlockingQueue;
@@ -70,7 +72,7 @@ public class RedissonPriorityBlockingQueue<V> extends RedissonPriorityQueue<V> i
     protected <T> void takeAsync(RPromise<V> result, long delay, long timeoutInMicro, RedisCommand<T> command, Object... params) {
         long start = System.currentTimeMillis();
         commandExecutor.getConnectionManager().getGroup().schedule(() -> {
-            RFuture<V> future = pollAsync(command, params);
+            RFuture<V> future = wrapLockedAsync(command, params);
             future.onComplete((res, e) -> {
                     if (e != null && !(e instanceof RedisConnectionException)) {
                         result.tryFailure(e);
@@ -107,7 +109,7 @@ public class RedissonPriorityBlockingQueue<V> extends RedissonPriorityQueue<V> i
 
     @Override
     public V take() throws InterruptedException {
-        return get(takeAsync());
+        return commandExecutor.getInterrupted(takeAsync());
     }
 
     public RFuture<V> pollAsync(long timeout, TimeUnit unit) {
@@ -118,7 +120,7 @@ public class RedissonPriorityBlockingQueue<V> extends RedissonPriorityQueue<V> i
 
     @Override
     public V poll(long timeout, TimeUnit unit) throws InterruptedException {
-        return get(pollAsync(timeout, unit));
+        return commandExecutor.getInterrupted(pollAsync(timeout, unit));
     }
 
     @Override
@@ -135,14 +137,24 @@ public class RedissonPriorityBlockingQueue<V> extends RedissonPriorityQueue<V> i
 
     @Override
     public V pollLastAndOfferFirstTo(String queueName, long timeout, TimeUnit unit) throws InterruptedException {
-        return get(pollLastAndOfferFirstToAsync(queueName, timeout, unit));
+        return commandExecutor.getInterrupted(pollLastAndOfferFirstToAsync(queueName, timeout, unit));
     }
     
     @Override
     public V takeLastAndOfferFirstTo(String queueName) throws InterruptedException {
-        return get(takeLastAndOfferFirstToAsync(queueName));
+        return commandExecutor.getInterrupted(takeLastAndOfferFirstToAsync(queueName));
     }
-    
+
+    @Override
+    public int subscribeOnElements(Consumer<V> consumer) {
+        return commandExecutor.getConnectionManager().getElementsSubscribeService().subscribeOnElements(this::takeAsync, consumer);
+    }
+
+    @Override
+    public void unsubscribe(int listenerId) {
+        commandExecutor.getConnectionManager().getElementsSubscribeService().unsubscribe(listenerId);
+    }
+
     public RFuture<V> takeLastAndOfferFirstToAsync(String queueName) {
         return pollLastAndOfferFirstToAsync(queueName, 0, TimeUnit.SECONDS);
     }
@@ -207,6 +219,24 @@ public class RedissonPriorityBlockingQueue<V> extends RedissonPriorityQueue<V> i
     }
 
     @Override
+    public RFuture<List<V>> pollAsync(int limit) {
+        return wrapLockedAsync(() -> {
+            return commandExecutor.evalWriteAsync(getName(), codec, RedisCommands.EVAL_LIST,
+                       "local result = {};"
+                     + "for i = 1, ARGV[1], 1 do " +
+                           "local value = redis.call('lpop', KEYS[1]);" +
+                           "if value ~= false then " +
+                               "table.insert(result, value);" +
+                           "else " +
+                               "return result;" +
+                           "end;" +
+                       "end; " +
+                       "return result;",
+                    Collections.singletonList(getName()), limit);
+        });
+    }
+
+    @Override
     public RFuture<V> pollFromAnyAsync(long timeout, TimeUnit unit, String... queueNames) {
         throw new UnsupportedOperationException("use poll method");
     }
@@ -214,5 +244,10 @@ public class RedissonPriorityBlockingQueue<V> extends RedissonPriorityQueue<V> i
     @Override
     public RFuture<Void> putAsync(V e) {
         throw new UnsupportedOperationException("use add method");
+    }
+
+    @Override
+    public List<V> poll(int limit) {
+        return get(pollAsync(limit));
     }
 }

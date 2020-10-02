@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,23 +15,8 @@
  */
 package org.redisson;
 
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
-import java.math.BigInteger;
-import java.security.MessageDigest;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.SortedSet;
-
-import org.redisson.api.RBucket;
-import org.redisson.api.RFuture;
-import org.redisson.api.RLock;
-import org.redisson.api.RSortedSet;
-import org.redisson.api.RedissonClient;
+import io.netty.buffer.ByteBuf;
+import org.redisson.api.*;
 import org.redisson.api.mapreduce.RCollectionMapReduce;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
@@ -41,7 +26,11 @@ import org.redisson.mapreduce.RedissonCollectionMapReduce;
 import org.redisson.misc.RPromise;
 import org.redisson.misc.RedissonPromise;
 
-import io.netty.buffer.ByteBuf;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.util.*;
 
 /**
  *
@@ -50,20 +39,6 @@ import io.netty.buffer.ByteBuf;
  * @param <V> value type
  */
 public class RedissonSortedSet<V> extends RedissonObject implements RSortedSet<V> {
-
-    private static class NaturalComparator<V> implements Comparator<V>, Serializable {
-
-        private static final long serialVersionUID = 7207038068494060240L;
-
-        static final NaturalComparator NATURAL_ORDER = new NaturalComparator();
-
-        public int compare(V c1, V c2) {
-            Comparable<Object> c1co = (Comparable<Object>) c1;
-            Comparable<Object> c2co = (Comparable<Object>) c2;
-            return c1co.compareTo(c2co);
-        }
-
-    }
 
     public static class BinarySearchResult<V> {
 
@@ -92,7 +67,7 @@ public class RedissonSortedSet<V> extends RedissonObject implements RSortedSet<V
 
     }
 
-    private Comparator<? super V> comparator = NaturalComparator.NATURAL_ORDER;
+    private Comparator comparator = Comparator.naturalOrder();
 
     CommandExecutor commandExecutor;
     
@@ -108,9 +83,7 @@ public class RedissonSortedSet<V> extends RedissonObject implements RSortedSet<V
 
         comparatorHolder = redisson.getBucket(getComparatorKeyName(), StringCodec.INSTANCE);
         lock = redisson.getLock("redisson_sortedset_lock:{" + getName() + "}");
-        list = (RedissonList<V>) redisson.getList(getName());
-        
-        loadComparator();
+        list = (RedissonList<V>) redisson.<V>getList(getName());
     }
 
     public RedissonSortedSet(Codec codec, CommandExecutor commandExecutor, String name, Redisson redisson) {
@@ -119,9 +92,7 @@ public class RedissonSortedSet<V> extends RedissonObject implements RSortedSet<V
 
         comparatorHolder = redisson.getBucket(getComparatorKeyName(), StringCodec.INSTANCE);
         lock = redisson.getLock("redisson_sortedset_lock:{" + getName() + "}");
-        list = (RedissonList<V>) redisson.getList(getName(), codec);
-
-        loadComparator();
+        list = (RedissonList<V>) redisson.<V>getList(getName(), codec);
     }
     
     @Override

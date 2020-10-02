@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.redisson.client.protocol.Decoder;
+import org.redisson.client.protocol.Encoder;
+
 /**
  * 
  * @author Nikita Koksharov
@@ -32,25 +35,25 @@ public class AttributesPutAllMessage extends AttributeMessage {
     public AttributesPutAllMessage() {
     }
 
-    public AttributesPutAllMessage(String nodeId, String sessionId, Map<String, Object> attrs) throws IOException {
+    public AttributesPutAllMessage(String nodeId, String sessionId, Map<String, Object> attrs, Encoder encoder) throws IOException {
         super(nodeId, sessionId);
         if (attrs != null) {
         	this.attrs = new HashMap<String, byte[]>();
         	for (Entry<String, Object> entry: attrs.entrySet()) {
-            	this.attrs.put(entry.getKey(), toByteArray(entry.getValue()));
+            	this.attrs.put(entry.getKey(), toByteArray(encoder, entry.getValue()));
         	}
         } else {
         	this.attrs = null;
         }
     }
 
-    public Map<String, Object> getAttrs(ClassLoader classLoader) throws IOException, ClassNotFoundException {
+    public Map<String, Object> getAttrs(Decoder<?> decoder) throws IOException, ClassNotFoundException {
     	if (attrs == null) {
     		return null;
     	}
     	Map<String, Object> result = new HashMap<String, Object>();
     	for (Entry<String, byte[]> entry: attrs.entrySet()) {
-    		result.put(entry.getKey(), toObject(classLoader, entry.getValue()));
+    		result.put(entry.getKey(), toObject(decoder, entry.getValue()));
     	}
         return result;
     }

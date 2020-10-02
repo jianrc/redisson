@@ -9,17 +9,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.TreeSet;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -27,19 +17,7 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
-import org.redisson.api.RBlockingDeque;
-import org.redisson.api.RBlockingQueue;
-import org.redisson.api.RCascadeType;
-import org.redisson.api.RDeque;
-import org.redisson.api.RList;
-import org.redisson.api.RLiveObject;
-import org.redisson.api.RLiveObjectService;
-import org.redisson.api.RMap;
-import org.redisson.api.RObject;
-import org.redisson.api.RQueue;
-import org.redisson.api.RSet;
-import org.redisson.api.RSortedSet;
-import org.redisson.api.RedissonClient;
+import org.redisson.api.*;
 import org.redisson.api.annotation.RCascade;
 import org.redisson.api.annotation.REntity;
 import org.redisson.api.annotation.RFieldAccessor;
@@ -323,6 +301,8 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         @RIndex
         private String name1;
         @RIndex
+        private String name2;
+        @RIndex
         private Integer num1;
         @RIndex
         private Boolean bool1;
@@ -368,38 +348,76 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         public void setObj(TestIndexed obj) {
             this.obj = obj;
         }
-        
+
+        public String getName2() {
+            return name2;
+        }
+
+        public void setName2(String name2) {
+            this.name2 = name2;
+        }
     }
 
     @Test
-    public void testFind() {
+    public void testFindEq2() {
         RLiveObjectService s = redisson.getLiveObjectService();
         TestIndexed t1 = new TestIndexed("1");
-        t1.setName1("test1");
+        t1.setNum1(1);
+        t1.setName1("common");
+        t1.setName2(";asdlkfj");
+        t1 = s.persist(t1);
+
+        TestIndexed t2 = new TestIndexed("2");
+        t2.setNum1(1);
+        t2.setName1("common");
+        t2.setName2("893123");
+        t2 = s.persist(t2);
+
+        TestIndexed t3 = new TestIndexed("3");
+        t3.setNum1(1);
+        t3.setName1("common");
+        t3.setName2("hkf;glhsdfg");
+        t3 = s.persist(t3);
+
+        Collection<TestIndexed> objects2 = s.find(TestIndexed.class, Conditions.and(
+                Conditions.eq("num1", 1),
+                Conditions.eq("name1", "jkflasdf"),
+                Conditions.eq("name2", "fdfdf")));
+        assertThat(objects2).isEmpty();
+
+        Collection<TestIndexed> objects1 = s.find(TestIndexed.class, Conditions.and(
+        Conditions.eq("num1", 1),
+        Conditions.eq("name1", "common"),
+        Conditions.eq("name2", "hkf;glhsdfg")));
+        assertThat(objects1).hasSize(1);
+    }
+
+    @Test
+    public void testFindLe() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setNum1(12);
         t1 = s.persist(t1);
         
         TestIndexed t2 = new TestIndexed("2");
+        t2.setNum1(10);
         t2 = s.persist(t2);
-        t2.setName1("test1");
-        t2.setObj(t1);
 
-        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.eq("obj", t1.getId()));
-        assertThat(objects0.iterator().next().getId()).isEqualTo(t2.getId());
-
-        t2.setObj(null);
-        Collection<TestIndexed> objects01 = s.find(TestIndexed.class, Conditions.eq("obj", t1.getId()));
-        assertThat(objects01).isEmpty();
-        
-        Collection<TestIndexed> objects1 = s.find(TestIndexed.class, Conditions.eq("name1", "test1"));
-        assertThat(objects1).hasSize(2);
-        
-        Collection<TestIndexed> objects2 = s.find(TestIndexed.class, Conditions.eq("name3", "test2"));
+        Collection<TestIndexed> objects2 = s.find(TestIndexed.class, Conditions.le("num1", 9));
         assertThat(objects2).isEmpty();
         
+        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.le("num1", 12));
+        assertThat(objects0).hasSize(2);
+        Iterator<TestIndexed> iter = objects0.iterator();
+        TestIndexed obj1 = iter.next();
+        assertThat(obj1.getId()).isEqualTo(t1.getId());
+        TestIndexed obj2 = iter.next();
+        assertThat(obj2.getId()).isEqualTo(t2.getId());
+
         s.delete(t1);
         s.delete(t2);
         
-        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.eq("name1", "test1"));
+        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.le("num1", 12));
         assertThat(objects3).isEmpty();
 
         TestIndexed t3 = new TestIndexed("3");
@@ -414,47 +432,306 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         t4.setNum1(42);
         t4.setBool1(true);
 
+        Collection<TestIndexed> objects4 = s.find(TestIndexed.class, Conditions.or(Conditions.le("num1", 30), Conditions.le("num1", 32)));
+        assertThat(objects4).hasSize(1);
+
+        Collection<TestIndexed> objects41 = s.find(TestIndexed.class, Conditions.or(Conditions.le("num1", 31), Conditions.lt("num1", -1)));
+        assertThat(objects41).hasSize(0);
+
+        Collection<TestIndexed> objects5 = s.find(TestIndexed.class, Conditions.or(Conditions.and(Conditions.eq("name1", "test31"), Conditions.le("num1", 32)), 
+                                                                    Conditions.and(Conditions.eq("name1", "test41"), Conditions.le("num1", 42))));
+        assertThat(objects5).hasSize(2);
+        
+        Collection<TestIndexed> objects6 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test34"), 
+                                                                     Conditions.and(Conditions.eq("name1", "test41"), Conditions.le("num1", 42))));
+        assertThat(objects6.iterator().next().getId()).isEqualTo("4");
+    }
+    
+    @Test
+    public void testFindLt() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setNum1(12);
+        t1 = s.persist(t1);
+        
+        TestIndexed t2 = new TestIndexed("2");
+        t2.setNum1(10);
+        t2 = s.persist(t2);
+
+        Collection<TestIndexed> objects2 = s.find(TestIndexed.class, Conditions.lt("num1", 9));
+        assertThat(objects2).isEmpty();
+        
+        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.lt("num1", 13));
+        assertThat(objects0).hasSize(2);
+        Iterator<TestIndexed> iter = objects0.iterator();
+        TestIndexed obj1 = iter.next();
+        assertThat(obj1.getId()).isEqualTo(t1.getId());
+        TestIndexed obj2 = iter.next();
+        assertThat(obj2.getId()).isEqualTo(t2.getId());
+
+        s.delete(t1);
+        s.delete(t2);
+        
+        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.lt("num1", 13));
+        assertThat(objects3).isEmpty();
+
+        TestIndexed t3 = new TestIndexed("3");
+        t3.setName1("test31");
+        t3.setNum1(32);
+        t3.setBool1(false);
+        t3 = s.persist(t3);
+        
+        TestIndexed t4 = new TestIndexed("4");
+        t4 = s.persist(t4);
+        t4.setName1("test41");
+        t4.setNum1(42);
+        t4.setBool1(true);
+
+        Collection<TestIndexed> objects4 = s.find(TestIndexed.class, Conditions.or(Conditions.lt("num1", 30), Conditions.lt("num1", 33)));
+        assertThat(objects4).hasSize(1);
+
+        Collection<TestIndexed> objects41 = s.find(TestIndexed.class, Conditions.or(Conditions.lt("num1", 32), Conditions.lt("num1", -1)));
+        assertThat(objects41).hasSize(0);
+
+        Collection<TestIndexed> objects5 = s.find(TestIndexed.class, Conditions.or(Conditions.and(Conditions.eq("name1", "test31"), Conditions.lt("num1", 33)), 
+                                                                    Conditions.and(Conditions.eq("name1", "test41"), Conditions.lt("num1", 43))));
+        assertThat(objects5).hasSize(2);
+        
+        Collection<TestIndexed> objects6 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test34"), 
+                                                                     Conditions.and(Conditions.eq("name1", "test41"), Conditions.lt("num1", 43))));
+        assertThat(objects6.iterator().next().getId()).isEqualTo("4");
+    }
+    
+    @Test
+    public void testFindGe() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setNum1(12);
+        t1 = s.persist(t1);
+        
+        TestIndexed t2 = new TestIndexed("2");
+        t2.setNum1(10);
+        t2 = s.persist(t2);
+
+        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.ge("num1", 10));
+        assertThat(objects0).hasSize(2);
+        Iterator<TestIndexed> iter = objects0.iterator();
+        TestIndexed obj1 = iter.next();
+        assertThat(obj1.getId()).isEqualTo(t1.getId());
+        TestIndexed obj2 = iter.next();
+        assertThat(obj2.getId()).isEqualTo(t2.getId());
+
+        s.delete(t1);
+        s.delete(t2);
+        
+        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.ge("num1", 10));
+        assertThat(objects3).isEmpty();
+
+        TestIndexed t3 = new TestIndexed("3");
+        t3.setName1("test31");
+        t3.setNum1(32);
+        t3.setBool1(false);
+        t3 = s.persist(t3);
+        
+        TestIndexed t4 = new TestIndexed("4");
+        t4 = s.persist(t4);
+        t4.setName1("test41");
+        t4.setNum1(42);
+        t4.setBool1(true);
+
+        Collection<TestIndexed> objects4 = s.find(TestIndexed.class, Conditions.or(Conditions.ge("num1", 42), Conditions.ge("num1", 43)));
+        assertThat(objects4).hasSize(1);
+
+        Collection<TestIndexed> objects41 = s.find(TestIndexed.class, Conditions.or(Conditions.ge("num1", 43), Conditions.ge("num1", 45)));
+        assertThat(objects41).hasSize(0);
+
+        Collection<TestIndexed> objects5 = s.find(TestIndexed.class, Conditions.or(Conditions.and(Conditions.eq("name1", "test31"), Conditions.ge("num1", 32)), 
+                                                                    Conditions.and(Conditions.eq("name1", "test41"), Conditions.ge("num1", 42))));
+        assertThat(objects5).hasSize(2);
+        
+        Collection<TestIndexed> objects6 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test34"), 
+                                                                     Conditions.and(Conditions.eq("name1", "test41"), Conditions.ge("num1", 42))));
+        assertThat(objects6.iterator().next().getId()).isEqualTo("4");
+    }
+
+    @Test
+    public void testFindGt() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setNum1(12);
+        t1 = s.persist(t1);
+
+        TestIndexed t2 = new TestIndexed("2");
+        t2.setNum1(10);
+        t2 = s.persist(t2);
+
+        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.gt("num1", 9));
+        assertThat(objects0).hasSize(2);
+        Iterator<TestIndexed> iter = objects0.iterator();
+        TestIndexed obj1 = iter.next();
+        assertThat(obj1.getId()).isEqualTo(t1.getId());
+        TestIndexed obj2 = iter.next();
+        assertThat(obj2.getId()).isEqualTo(t2.getId());
+
+        s.delete(t1);
+        s.delete(t2);
+
+        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.gt("num1", 9));
+        assertThat(objects3).isEmpty();
+
+        TestIndexed t3 = new TestIndexed("3");
+        t3.setName1("test31");
+        t3.setNum1(32);
+        t3.setBool1(false);
+        t3 = s.persist(t3);
+
+        TestIndexed t4 = new TestIndexed("4");
+        t4 = s.persist(t4);
+        t4.setName1("test41");
+        t4.setNum1(42);
+        t4.setBool1(true);
+
+        Collection<TestIndexed> objects4 = s.find(TestIndexed.class, Conditions.or(Conditions.gt("num1", 40), Conditions.gt("num1", 42)));
+        assertThat(objects4).hasSize(1);
+
+        Collection<TestIndexed> objects41 = s.find(TestIndexed.class, Conditions.or(Conditions.gt("num1", 42), Conditions.gt("num1", 45)));
+        assertThat(objects41).hasSize(0);
+
+        Collection<TestIndexed> objects5 = s.find(TestIndexed.class, Conditions.or(Conditions.and(Conditions.eq("name1", "test31"), Conditions.gt("num1", 30)),
+                                                                    Conditions.and(Conditions.eq("name1", "test41"), Conditions.gt("num1", 40))));
+        assertThat(objects5).hasSize(2);
+
+        Collection<TestIndexed> objects6 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test34"),
+                                                                     Conditions.and(Conditions.eq("name1", "test41"), Conditions.gt("num1", 41))));
+        assertThat(objects6.iterator().next().getId()).isEqualTo("4");
+    }
+
+    @Test
+    public void testCountEq() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setName1("test1");
+        t1.setNum1(100);
+        t1 = s.persist(t1);
+
+        TestIndexed t2 = new TestIndexed("2");
+        t2 = s.persist(t2);
+        t2.setName1("test1");
+        t2.setObj(t1);
+        t2.setNum1(100);
+
+        long ids = s.count(TestIndexed.class, Conditions.eq("name1", "test1"));
+        assertThat(ids).isEqualTo(2);
+
+        long ids2 = s.count(TestIndexed.class, Conditions.eq("name1", "test2"));
+        assertThat(ids2).isZero();
+
+        long ids3 = s.count(TestIndexed.class, Conditions.eq("num1", 100));
+        assertThat(ids3).isEqualTo(2);
+    }
+
+    @Test
+    public void testIndexUpdate() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setName1("test1");
+        t1 = s.persist(t1);
+
+        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.eq("name1", "test1"));
+        assertThat(objects0.iterator().next().getId()).isEqualTo(t1.getId());
+
+        t1.setName1("test2");
+
+        Collection<TestIndexed> objects2 = s.find(TestIndexed.class, Conditions.eq("name1", "test1"));
+        assertThat(objects2.isEmpty()).isTrue();
+        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.eq("name1", "test2"));
+        assertThat(objects3.iterator().next().getId()).isEqualTo(t1.getId());
+    }
+
+    @Test
+    public void testFindEq() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed t1 = new TestIndexed("1");
+        t1.setName1("test1");
+        t1 = s.persist(t1);
+
+        TestIndexed t2 = new TestIndexed("2");
+        t2 = s.persist(t2);
+        t2.setName1("test1");
+        t2.setObj(t1);
+
+        Collection<TestIndexed> objects0 = s.find(TestIndexed.class, Conditions.eq("obj", t1.getId()));
+        assertThat(objects0.iterator().next().getId()).isEqualTo(t2.getId());
+
+        t2.setObj(null);
+        Collection<TestIndexed> objects01 = s.find(TestIndexed.class, Conditions.eq("obj", t1.getId()));
+        assertThat(objects01).isEmpty();
+
+        Collection<TestIndexed> objects1 = s.find(TestIndexed.class, Conditions.eq("name1", "test1"));
+        assertThat(objects1).hasSize(2);
+
+        Collection<TestIndexed> objects2 = s.find(TestIndexed.class, Conditions.eq("name3", "test2"));
+        assertThat(objects2).isEmpty();
+
+        s.delete(t1);
+        s.delete(t2);
+
+        Collection<TestIndexed> objects3 = s.find(TestIndexed.class, Conditions.eq("name1", "test1"));
+        assertThat(objects3).isEmpty();
+
+        TestIndexed t3 = new TestIndexed("3");
+        t3.setName1("test31");
+        t3.setNum1(32);
+        t3.setBool1(false);
+        t3 = s.persist(t3);
+
+        TestIndexed t4 = new TestIndexed("4");
+        t4 = s.persist(t4);
+        t4.setName1("test41");
+        t4.setNum1(42);
+        t4.setBool1(true);
+
         Collection<TestIndexed> objects4 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test31"), Conditions.eq("name1", "test41")));
         assertThat(objects4).hasSize(2);
 
         Collection<TestIndexed> objects41 = s.find(TestIndexed.class, Conditions.in("name1", "test31", "test41"));
         assertThat(objects41).hasSize(2);
-        
-        Collection<TestIndexed> objects5 = s.find(TestIndexed.class, Conditions.or(Conditions.and(Conditions.eq("name1", "test31"), Conditions.eq("num1", 32)), 
+
+        Collection<TestIndexed> objects5 = s.find(TestIndexed.class, Conditions.or(Conditions.and(Conditions.eq("name1", "test31"), Conditions.eq("num1", 32)),
                                                                     Conditions.and(Conditions.eq("name1", "test41"), Conditions.eq("num1", 42))));
         assertThat(objects5).hasSize(2);
-        
-        Collection<TestIndexed> objects6 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test34"), 
+
+        Collection<TestIndexed> objects6 = s.find(TestIndexed.class, Conditions.or(Conditions.eq("name1", "test34"),
                                                                      Conditions.and(Conditions.eq("name1", "test41"), Conditions.eq("num1", 42))));
         assertThat(objects6.iterator().next().getId()).isEqualTo("4");
-        
+
         Collection<TestIndexed> objects7 = s.find(TestIndexed.class, Conditions.eq("bool1", true));
         assertThat(objects7.iterator().next().getId()).isEqualTo("4");
-        
-        Collection<TestIndexed> objects8 = s.find(TestIndexed.class, Conditions.and(Conditions.in("name1", "test31", "test30"), 
+
+        Collection<TestIndexed> objects8 = s.find(TestIndexed.class, Conditions.and(Conditions.in("name1", "test31", "test30"),
                 Conditions.eq("bool1", true)));
         assertThat(objects8).isEmpty();
     }
-    
+
     @Test
     public void testBasics() {
         RLiveObjectService s = redisson.getLiveObjectService();
         TestREntity t = new TestREntity("1");
         t = s.persist(t);
         assertEquals("1", t.getName());
-        
+
         DefaultNamingScheme scheme = new DefaultNamingScheme(redisson.getConfig().getCodec());
-        assertTrue(redisson.getMap(scheme.getName(TestREntity.class, String.class, "name", "1")).isExists());
+        assertTrue(redisson.getMap(scheme.getName(TestREntity.class, "1")).isExists());
         t.setName("3333");
-        
+
         assertEquals("3333", t.getName());
-        assertTrue(redisson.getMap(scheme.getName(TestREntity.class, String.class, "name", "3333")).isExists());
+        assertTrue(redisson.getMap(scheme.getName(TestREntity.class, "3333")).isExists());
         t.setValue("111");
         assertEquals("111", t.getValue());
-        assertTrue(redisson.getMap(scheme.getName(TestREntity.class, String.class, "name", "3333")).isExists());
-        assertTrue(!redisson.getMap(scheme.getName(TestREntity.class, String.class, "name", "1")).isExists());
-        assertEquals("111", redisson.getMap(scheme.getName(TestREntity.class, String.class, "name", "3333")).get("value"));
-        
+        assertTrue(redisson.getMap(scheme.getName(TestREntity.class, "3333")).isExists());
+        assertTrue(!redisson.getMap(scheme.getName(TestREntity.class, "1")).isExists());
+        assertEquals("111", redisson.getMap(scheme.getName(TestREntity.class, "3333")).get("value"));
+
 //        ((RLiveObject) t).getLiveObjectLiveMap().put("value", "555");
 //        assertEquals("555", redisson.getMap(REntity.DefaultNamingScheme.INSTANCE.getName(TestREntity.class, "name", "3333")).get("value"));
 //        assertEquals("3333", ((RObject) t).getName());//field access takes priority over the implemented interface.
@@ -468,21 +745,21 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         RMap<String, String> map = redisson.<String, String>getMap("testMap");
         t.setValue(map);
         map.put("field", "123");
-        
+
         TestREntityWithMap t2 = s.get(TestREntityWithMap.class, "2");
-        
+
         assertEquals("123", t2.getValue().get("field"));
-        
+
         TestREntityWithMap t3 = s.get(TestREntityWithMap.class, "2");
         t3.getValue().put("field", "333");
 
         t3 = s.get(TestREntityWithMap.class, "2");
         assertEquals("333", t3.getValue().get("field"));
-        
+
         HashMap<String, String> map2 = new HashMap<>();
         map2.put("field", "hello");
         t.setValue(map2);
-        
+
         t3 = s.get(TestREntityWithMap.class, "2");
         assertEquals("hello", t3.getValue().get("field"));
     }
@@ -511,7 +788,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         RLiveObjectService s = redisson.getLiveObjectService();
         TestREntity t1 = new TestREntity("1");
         t1 = s.persist(t1);
-        
+
         try {
             s.persist(new TestREntityIdNested(t1));
             fail("Should not be here");
@@ -523,10 +800,10 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
     @Test
     public void testLiveObjectWithNestedLiveObjectAsValue() throws Exception {
         RLiveObjectService s = redisson.getLiveObjectService();
-        
+
         TestREntityWithRMap t1 = new TestREntityWithRMap("111");
         t1 = s.persist(t1);
-        
+
         TestREntityValueNested t2 = new TestREntityValueNested("122");
         t2 = s.persist(t2);
 
@@ -553,9 +830,11 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         @RId(generator = UUIDGenerator.class)
         private Serializable id;
 
+        private Map<String, String> values = new HashMap<>();
+
         public TestClass() {
         }
-        
+
         public TestClass(Serializable id) {
             this.id = id;
         }
@@ -587,14 +866,25 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         public void setContent(Object content) {
             this.content = content;
         }
-        
+
         @RFieldAccessor
         public <T> void set(String field, T value) {
         }
-        
+
         @RFieldAccessor
         public <T> T get(String field) {
             return null;
+        }
+
+        public void addEntry(String key, String value) {
+            values.put(key, value);
+        }
+
+        public void setValues(Map<String, String> values) {
+            this.values = values;
+        }
+        public Map<String, String> getValues() {
+            return values;
         }
 
         @Override
@@ -721,7 +1011,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         customer.getOrders().add(order2);
 
         redisson.getLiveObjectService().merge(customer);
-        
+
         Customer mergedCustomer = redisson.getLiveObjectService().get(Customer.class, "12");
         assertThat(mergedCustomer.getOrders().size()).isEqualTo(2);
         for (Order orderElement : mergedCustomer.getOrders()) {
@@ -737,7 +1027,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         }
     }
 
-    
+
     @Test
     public void testPersistList() {
         Customer customer = new Customer("12");
@@ -747,7 +1037,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         customer.getOrders().add(order2);
 
         redisson.getLiveObjectService().persist(customer);
-        
+
         customer = redisson.getLiveObjectService().get(Customer.class, "12");
         assertThat(customer.getOrders().size()).isEqualTo(2);
         for (Order orderElement : customer.getOrders()) {
@@ -755,17 +1045,19 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
             assertThat(orderElement.getCustomer().getId()).isEqualTo("12");
         }
     }
-        
+
     @Test
     public void testPersist() {
         RLiveObjectService service = redisson.getLiveObjectService();
-        
+
         TestClass ts = new TestClass(new ObjectId(100));
         ts.setValue("VALUE");
         ts.setContent(new TestREntity("123"));
+        ts.addEntry("1", "2");
         TestClass persisted = service.persist(ts);
-        
-        assertEquals(2, redisson.getKeys().count());
+
+        assertEquals(3, redisson.getKeys().count());
+        assertEquals(1, persisted.getValues().size());
         assertEquals("123", ((TestREntity)persisted.getContent()).getName());
         assertEquals(new ObjectId(100), persisted.getId());
         assertEquals("VALUE", persisted.getValue());
@@ -842,7 +1134,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         RLiveObjectService service = redisson.getLiveObjectService();
         TestClass instance = new TestClass(new ObjectId(100));
         instance = service.persist(instance);
-        
+
         RLiveObject liveObject = service.asLiveObject(instance);
         assertEquals(new ObjectId(100), liveObject.getLiveObjectId());
         try {
@@ -911,7 +1203,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         ts.setCode("CODE");
         TestClass persisted = service.persist(ts);
         assertTrue(service.isExists(persisted));
-        service.delete(TestClass.class, new ObjectId(100));
+        assertThat(service.delete(TestClass.class, new ObjectId(100))).isEqualTo(1);
         assertFalse(service.isExists(persisted));
     }
 
@@ -923,7 +1215,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
 
         public TestClassID1() {
         }
-        
+
         public TestClassID1(Long name) {
             this.name = name;
         }
@@ -942,7 +1234,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
 
         public TestClassID2() {
         }
-        
+
         public TestClassID2(Long name) {
             this.name = name;
         }
@@ -960,13 +1252,74 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         ts = service.persist(ts);
         UUID uuid = UUID.fromString(ts.getId().toString());
         assertEquals(4, uuid.version());
-        
+
         TestClassID1 tc1 = new TestClassID1();
         tc1 = service.persist(tc1);
         assertEquals(new Long(1), tc1.getName());
         TestClassID2 tc2 = new TestClassID2();
         tc2 = service.persist(tc2);
         assertEquals(new Long(1), tc2.getName());
+    }
+
+    @REntity
+    public static class TestIndexed1 implements Serializable {
+
+        @RId
+        String id;
+
+        List<String> keywords = new ArrayList<>();
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public List<String> getKeywords() {
+            return keywords;
+        }
+
+        public void setKeywords(List<String> keywords) {
+            this.keywords = keywords;
+        }
+    }
+
+    @Test
+    public void testFindIds() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed1 t1 = new TestIndexed1();
+        t1.setId("1");
+        t1.setKeywords(Collections.singletonList("132323"));
+        TestIndexed1 t2 = new TestIndexed1();
+        t2.setId("2");
+        t2.setKeywords(Collections.singletonList("fjdklj"));
+        s.persist(t1, t2);
+
+        Iterable<String> ids = s.findIds(TestIndexed1.class);
+        assertThat(ids).containsExactlyInAnyOrder("1", "2");
+    }
+
+    @Test
+    public void testMergeList2() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+        TestIndexed1 t1 = new TestIndexed1();
+        t1.setId("1");
+        List<String> ws = new ArrayList<>();
+        ws.add("word1");
+        ws.add("word2");
+        t1.setKeywords(ws);
+        s.persist(t1);
+
+        List<String> ws2 = new ArrayList<>();
+        ws2.add("word3");
+        t1.setKeywords(ws2);
+        s.merge(t1);
+        assertThat(t1.getKeywords()).containsExactly("word3");
+
+        t1 = s.get(TestIndexed1.class, "1");
+        assertThat(t1.getKeywords()).containsExactly("word3");
     }
 
     @Test
@@ -1122,12 +1475,6 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         assertTrue(ConcurrentHashMap.class.isAssignableFrom(ts.getContent().getClass()));
         assertFalse(RMap.class.isAssignableFrom(ts.getContent().getClass()));
 
-        ArrayBlockingQueue<String> abq = new ArrayBlockingQueue<>(10);
-        abq.add("111");
-        ts.setContent(abq);
-        assertTrue(ArrayBlockingQueue.class.isAssignableFrom(ts.getContent().getClass()));
-        assertFalse(RBlockingQueue.class.isAssignableFrom(ts.getContent().getClass()));
-
         ConcurrentLinkedQueue<String> clq = new ConcurrentLinkedQueue<>();
         ts.setContent(clq);
         assertTrue(ConcurrentLinkedQueue.class.isAssignableFrom(ts.getContent().getClass()));
@@ -1199,7 +1546,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         myObject = service.persist(myObject);
         myObject.setValue("123345");
         assertTrue(service.asLiveObject(myObject).isExists());
-        service.asRExpirable(myObject).expire(1, TimeUnit.SECONDS);
+        service.asRMap(myObject).expire(1, TimeUnit.SECONDS);
         Thread.sleep(2000);
         assertFalse(service.asLiveObject(myObject).isExists());
     }
@@ -1370,7 +1717,7 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         
         assertThat(c.getOrders().size()).isEqualTo(2);
 
-        assertThat(redisson.getKeys().count()).isEqualTo(5);
+        assertThat(redisson.getKeys().count()).isEqualTo(7);
         
         List<Order> list = new ArrayList<>();
         Order o3 = new Order(c);
@@ -1528,9 +1875,20 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
     @Test
     public void testDeleteNotExisted() {
         RLiveObjectService service = redisson.getLiveObjectService();
-        assertThat(service.delete(Customer.class, "id")).isFalse();
+        assertThat(service.delete(Customer.class, "id")).isZero();
     }
-    
+
+    @Test
+    public void testDeleteMultipleIds() {
+        Customer customer1 = new Customer("1");
+        Customer customer2 = new Customer("2");
+        RLiveObjectService ls = redisson.getLiveObjectService();
+        ls.persist(customer1, customer2);
+        assertThat(ls.delete(Customer.class, "1", "2")).isEqualTo(2);
+        assertThat(redisson.getKeys().count()).isZero();
+    }
+
+
     @Test
     public void testDelete() {
         Customer customer = new Customer("12");
@@ -1808,6 +2166,24 @@ public class RedissonLiveObjectServiceTest extends BaseTest {
         public void setGood(boolean good) {
             this.good = good;
         }
+    }
+
+    @Test(timeout = 40*1000)
+    public void testBatchedPersist() {
+        RLiveObjectService s = redisson.getLiveObjectService();
+
+        List<TestREntity> objects = new ArrayList<>();
+        int objectsAmount = 1000000;
+        for (int i = 0; i < objectsAmount; i++) {
+            TestREntity e = new TestREntity();
+            e.setName("" + i);
+            e.setValue("value" + i);
+            objects.add(e);
+        }
+        List<Object> attachedObjects = s.persist(objects.toArray());
+        assertThat(attachedObjects).hasSize(objectsAmount);
+
+        assertThat(redisson.getKeys().count()).isEqualTo(objectsAmount);
     }
 
     @Test

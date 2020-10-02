@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,6 +169,8 @@ public interface RLexSortedSetAsync extends RCollectionAsync<String> {
      * @param fromInclusive - start element inclusive
      * @param toElement - end element
      * @param toInclusive - end element inclusive
+     * @param offset - offset of result collection
+     * @param count - amount of result collection
      * @return collection of elements
      */
     RFuture<Collection<String>> rangeAsync(String fromElement, boolean fromInclusive, String toElement, boolean toInclusive, int offset, int count);
@@ -234,6 +236,8 @@ public interface RLexSortedSetAsync extends RCollectionAsync<String> {
      * @param fromInclusive - start element inclusive
      * @param toElement - end element
      * @param toInclusive - end element inclusive
+     * @param offset - offset of result collection
+     * @param count - amount of result collection
      * @return collection of elements
      */
     RFuture<Collection<String>> rangeReversedAsync(String fromElement, boolean fromInclusive, String toElement, boolean toInclusive, int offset, int count);

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,11 @@ public class JCacheEvictionTask extends EvictionTask {
         this.expiredChannelName = expiredChannelName;
     }
 
+    @Override
+    String getName() {
+        return name;
+    }
+    
     @Override
     RFuture<Integer> execute() {
         return executor.evalWriteAsync(name, LongCodec.INSTANCE, RedisCommands.EVAL_INTEGER,

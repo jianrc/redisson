@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,9 +177,7 @@ public class BaseTransactionalMap<K, V> {
             }
             
             operations.add(operation);
-            for (HashValue key : state.keySet()) {
-                state.put(key, MapEntry.NULL);
-            }
+            state.replaceAll((k, v) -> MapEntry.NULL);
             deleted = true;
             result.trySuccess(res);
         });
@@ -243,6 +241,7 @@ public class BaseTransactionalMap<K, V> {
     
     protected RFuture<V> addAndGetOperationAsync(K key, Number value) {
         RPromise<V> result = new RedissonPromise<V>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, key, new Runnable() {
             @Override
             public void run() {
@@ -255,7 +254,7 @@ public class BaseTransactionalMap<K, V> {
                     }
                     BigDecimal res = currentValue.add(new BigDecimal(value.toString()));
 
-                    operations.add(new MapAddAndGetOperation(map, key, value, transactionId));
+                    operations.add(new MapAddAndGetOperation(map, key, value, transactionId, threadId));
                     state.put(keyHash, new MapEntry(key, res));
                     if (deleted != null) {
                         deleted = false;
@@ -274,7 +273,7 @@ public class BaseTransactionalMap<K, V> {
                     BigDecimal currentValue = new BigDecimal(r.toString());
                     BigDecimal res = currentValue.add(new BigDecimal(value.toString()));
                     
-                    operations.add(new MapAddAndGetOperation(map, key, value, transactionId));
+                    operations.add(new MapAddAndGetOperation(map, key, value, transactionId, threadId));
                     state.put(keyHash, new MapEntry(key, res));
                     if (deleted != null) {
                         deleted = false;
@@ -289,7 +288,8 @@ public class BaseTransactionalMap<K, V> {
     }
     
     protected RFuture<V> putIfAbsentOperationAsync(K key, V value) {
-        return putIfAbsentOperationAsync(key, value, new MapPutIfAbsentOperation(map, key, value, transactionId));
+        long threadId = Thread.currentThread().getId();
+        return putIfAbsentOperationAsync(key, value, new MapPutIfAbsentOperation(map, key, value, transactionId, threadId));
     }
 
     protected RFuture<V> putIfAbsentOperationAsync(K key, V value, MapOperation mapOperation) {
@@ -335,7 +335,8 @@ public class BaseTransactionalMap<K, V> {
     }
     
     protected final RFuture<V> putOperationAsync(K key, V value) {
-        return putOperationAsync(key, value, new MapPutOperation(map, key, value, transactionId));
+        long threadId = Thread.currentThread().getId();
+        return putOperationAsync(key, value, new MapPutOperation(map, key, value, transactionId, threadId));
     }
 
     protected RFuture<V> putOperationAsync(K key, V value, MapOperation operation) {
@@ -379,7 +380,8 @@ public class BaseTransactionalMap<K, V> {
     }
     
     protected RFuture<Boolean> fastPutIfAbsentOperationAsync(K key, V value) {
-        return fastPutIfAbsentOperationAsync(key, value, new MapFastPutIfAbsentOperation(map, key, value, transactionId));
+        long threadId = Thread.currentThread().getId();
+        return fastPutIfAbsentOperationAsync(key, value, new MapFastPutIfAbsentOperation(map, key, value, transactionId, threadId));
     }
 
     protected RFuture<Boolean> fastPutIfAbsentOperationAsync(K key, V value, MapOperation mapOperation) {
@@ -425,7 +427,8 @@ public class BaseTransactionalMap<K, V> {
     }
     
     protected RFuture<Boolean> fastPutOperationAsync(K key, V value) {
-        return fastPutOperationAsync(key, value, new MapFastPutOperation(map, key, value, transactionId));
+        long threadId = Thread.currentThread().getId();
+        return fastPutOperationAsync(key, value, new MapFastPutOperation(map, key, value, transactionId, threadId));
     }
 
     protected RFuture<Boolean> fastPutOperationAsync(K key, V value, MapOperation operation) {
@@ -473,6 +476,7 @@ public class BaseTransactionalMap<K, V> {
     @SuppressWarnings("unchecked")
     protected RFuture<Long> fastRemoveOperationAsync(K... keys) {
         RPromise<Long> result = new RedissonPromise<Long>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, new Runnable() {
             @Override
             public void run() {
@@ -483,7 +487,7 @@ public class BaseTransactionalMap<K, V> {
                     HashValue keyHash = toKeyHash(key);
                     MapEntry currentValue = state.get(keyHash);
                     if (currentValue != null && currentValue != MapEntry.NULL) {
-                        operations.add(new MapFastRemoveOperation(map, key, transactionId));
+                        operations.add(new MapFastRemoveOperation(map, key, transactionId, threadId));
                         state.put(keyHash, MapEntry.NULL);
 
                         counter.incrementAndGet();
@@ -500,7 +504,7 @@ public class BaseTransactionalMap<K, V> {
                     
                     for (K key : res.keySet()) {
                         HashValue keyHash = toKeyHash(key);
-                        operations.add(new MapFastRemoveOperation(map, key, transactionId));
+                        operations.add(new MapFastRemoveOperation(map, key, transactionId, threadId));
                         counter.incrementAndGet();
                         state.put(keyHash, MapEntry.NULL);
                     }
@@ -676,13 +680,14 @@ public class BaseTransactionalMap<K, V> {
     
     protected RFuture<V> removeOperationAsync(K key) {
         RPromise<V> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, key, new Runnable() {
             @Override
             public void run() {
                 HashValue keyHash = toKeyHash(key);
                 MapEntry entry = state.get(keyHash);
                 if (entry != null) {
-                    operations.add(new MapRemoveOperation(map, key, transactionId));
+                    operations.add(new MapRemoveOperation(map, key, transactionId, threadId));
                     if (entry == MapEntry.NULL) {
                         result.trySuccess(null);
                     } else {
@@ -697,7 +702,7 @@ public class BaseTransactionalMap<K, V> {
                         result.tryFailure(e);
                         return;
                     }
-                    operations.add(new MapRemoveOperation(map, key, transactionId));
+                    operations.add(new MapRemoveOperation(map, key, transactionId, threadId));
                     if (res != null) {
                         state.put(keyHash, MapEntry.NULL);
                     }
@@ -711,6 +716,7 @@ public class BaseTransactionalMap<K, V> {
     
     protected RFuture<Boolean> removeOperationAsync(Object key, Object value) {
         RPromise<Boolean> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, (K) key, new Runnable() {
             @Override
             public void run() {
@@ -722,7 +728,7 @@ public class BaseTransactionalMap<K, V> {
                         return;
                     }
                     
-                    operations.add(new MapRemoveOperation(map, key, value, transactionId));
+                    operations.add(new MapRemoveOperation(map, key, value, transactionId, threadId));
                     if (isEqual(entry.getValue(), value)) {
                         state.put(keyHash, MapEntry.NULL);
                         result.trySuccess(true);
@@ -738,7 +744,7 @@ public class BaseTransactionalMap<K, V> {
                         result.tryFailure(e);
                         return;
                     }
-                    operations.add(new MapRemoveOperation(map, key, value, transactionId));
+                    operations.add(new MapRemoveOperation(map, key, value, transactionId, threadId));
                     boolean res = isEqual(r, value);
                     if (res) {
                         state.put(keyHash, MapEntry.NULL);
@@ -764,11 +770,12 @@ public class BaseTransactionalMap<K, V> {
 
     protected RFuture<Void> putAllOperationAsync(Map<? extends K, ? extends V> entries) {
         RPromise<Void> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, new Runnable() {
             @Override
             public void run() {
                 for (Entry<? extends K, ? extends V> entry : entries.entrySet()) {
-                    operations.add(new MapPutOperation(map, entry.getKey(), entry.getValue(), transactionId));
+                    operations.add(new MapPutOperation(map, entry.getKey(), entry.getValue(), transactionId, threadId));
                     HashValue keyHash = toKeyHash(entry.getKey());
                     state.put(keyHash, new MapEntry(entry.getKey(), entry.getValue()));
                 }
@@ -785,6 +792,7 @@ public class BaseTransactionalMap<K, V> {
     
     protected RFuture<Boolean> replaceOperationAsync(K key, V oldValue, V newValue) {
         RPromise<Boolean> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, key, new Runnable() {
             @Override
             public void run() {
@@ -796,7 +804,7 @@ public class BaseTransactionalMap<K, V> {
                         return;
                     }
                     
-                    operations.add(new MapReplaceOperation(map, key, newValue, oldValue, transactionId));
+                    operations.add(new MapReplaceOperation(map, key, newValue, oldValue, transactionId, threadId));
                     if (isEqual(entry.getValue(), oldValue)) {
                         state.put(keyHash, new MapEntry(key, newValue));
                         result.trySuccess(true);
@@ -813,7 +821,7 @@ public class BaseTransactionalMap<K, V> {
                         return;
                     }
                     
-                    operations.add(new MapReplaceOperation(map, key, newValue, oldValue, transactionId));
+                    operations.add(new MapReplaceOperation(map, key, newValue, oldValue, transactionId, threadId));
                     boolean res = isEqual(r, oldValue);
                     if (res) {
                         state.put(keyHash, new MapEntry(key, newValue));
@@ -827,12 +835,13 @@ public class BaseTransactionalMap<K, V> {
 
     protected RFuture<V> replaceOperationAsync(K key, V value) {
         RPromise<V> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, key, new Runnable() {
             @Override
             public void run() {
                 HashValue keyHash = toKeyHash(key);
                 MapEntry entry = state.get(keyHash);
-                operations.add(new MapReplaceOperation(map, key, value, transactionId));
+                operations.add(new MapReplaceOperation(map, key, value, transactionId, threadId));
                 if (entry != null) {
                     if (entry == MapEntry.NULL) {
                         result.trySuccess(null);
@@ -850,7 +859,7 @@ public class BaseTransactionalMap<K, V> {
                         return;
                     }
                     
-                    operations.add(new MapReplaceOperation(map, key, value, transactionId));
+                    operations.add(new MapReplaceOperation(map, key, value, transactionId, threadId));
                     if (res != null) {
                         state.put(keyHash, new MapEntry(key, value));
                     }
@@ -867,7 +876,7 @@ public class BaseTransactionalMap<K, V> {
     }
 
     protected RLock getLock(K key) {
-        String lockName = ((RedissonMap<K, V>) map).getLockName(key, "lock");
+        String lockName = ((RedissonMap<K, V>) map).getLockByMapKey(key, "lock");
         return new RedissonTransactionalLock(commandExecutor, lockName, transactionId);
     }
 

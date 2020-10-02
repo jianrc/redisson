@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.hibernate.cache.spi.access.SoftLock;
 import org.hibernate.cfg.Settings;
 import org.hibernate.engine.spi.SessionImplementor;
 import org.hibernate.persister.entity.EntityPersister;
+import org.redisson.hibernate.region.RedissonNaturalIdRegion;
 
 /**
  * 
@@ -94,12 +95,12 @@ public class TransactionalNaturalIdRegionAccessStrategy extends BaseRegionAccess
 
     @Override
     public Object generateCacheKey(Object[] naturalIdValues, EntityPersister persister, SessionImplementor session) {
-        return DefaultCacheKeysFactory.staticCreateNaturalIdKey(naturalIdValues, persister, session);
+        return ((RedissonNaturalIdRegion)region).getCacheKeysFactory().createNaturalIdKey(naturalIdValues, persister, session);
     }
 
     @Override
     public Object[] getNaturalIdValues(Object cacheKey) {
-        return DefaultCacheKeysFactory.staticGetNaturalIdValues(cacheKey);
+        return ((RedissonNaturalIdRegion)region).getCacheKeysFactory().getNaturalIdValues(cacheKey);
     }
 
 }

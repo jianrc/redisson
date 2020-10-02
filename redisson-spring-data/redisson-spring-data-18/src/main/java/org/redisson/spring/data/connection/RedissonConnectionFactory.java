@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.redisson.spring.data.connection;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.redisson.Redisson;
+import org.redisson.RedissonKeys;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.RedisClient;
 import org.redisson.client.protocol.RedisCommands;
@@ -40,7 +41,8 @@ import org.springframework.data.redis.connection.RedisSentinelConnection;
  * @author Nikita Koksharov
  *
  */
-public class RedissonConnectionFactory implements RedisConnectionFactory, InitializingBean, DisposableBean {
+public class RedissonConnectionFactory implements RedisConnectionFactory, 
+                    InitializingBean, DisposableBean {
 
     private final static Log log = LogFactory.getLog(RedissonConnectionFactory.class);
     
@@ -49,12 +51,14 @@ public class RedissonConnectionFactory implements RedisConnectionFactory, Initia
 
     private Config config;
     private RedissonClient redisson;
-    
+    private boolean hasOwnRedisson;
+
     /**
      * Creates factory with default Redisson configuration
      */
     public RedissonConnectionFactory() {
         this(Redisson.create());
+        hasOwnRedisson = true;
     }
     
     /**
@@ -74,6 +78,7 @@ public class RedissonConnectionFactory implements RedisConnectionFactory, Initia
     public RedissonConnectionFactory(Config config) {
         super();
         this.config = config;
+        hasOwnRedisson = true;
     }
 
     @Override
@@ -83,6 +88,9 @@ public class RedissonConnectionFactory implements RedisConnectionFactory, Initia
 
     @Override
     public void destroy() throws Exception {
+        if (hasOwnRedisson) {
+            redisson.shutdown();
+        }
     }
 
     @Override
@@ -116,7 +124,7 @@ public class RedissonConnectionFactory implements RedisConnectionFactory, Initia
             throw new InvalidDataAccessResourceUsageException("Redisson is not in Sentinel mode");
         }
         
-        SentinelConnectionManager manager = ((SentinelConnectionManager)((Redisson)redisson).getConnectionManager());
+        SentinelConnectionManager manager = ((SentinelConnectionManager)((RedissonKeys)redisson.getKeys()).getConnectionManager());
         for (RedisClient client : manager.getSentinels()) {
             org.redisson.client.RedisConnection connection = client.connect();
             try {

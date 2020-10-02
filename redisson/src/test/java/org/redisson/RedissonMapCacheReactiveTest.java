@@ -170,7 +170,7 @@ public class RedissonMapCacheReactiveTest extends BaseReactiveTest {
 
         Thread.sleep(1000);
 
-        assertThat(toIterator(cache.keyIterator())).containsOnly("0", "2", "3");
+        assertThat(toIterator(cache.keyIterator())).toIterable().containsOnly("0", "2", "3");
     }
 
     @Test
@@ -406,22 +406,6 @@ public class RedissonMapCacheReactiveTest extends BaseReactiveTest {
         }
 
         Assert.assertEquals(0, values.size());
-    }
-
-    @Test
-    public void testEquals() {
-        RMapCacheReactive<String, String> map = redisson.getMapCache("simple");
-        sync(map.put("1", "7"));
-        sync(map.put("2", "4"));
-        sync(map.put("3", "5"));
-
-        Map<String, String> testMap = new HashMap<String, String>();
-        testMap.put("1", "7");
-        testMap.put("2", "4");
-        testMap.put("3", "5");
-
-        Assert.assertEquals(map, testMap);
-        Assert.assertEquals(testMap.hashCode(), map.hashCode());
     }
 
 }

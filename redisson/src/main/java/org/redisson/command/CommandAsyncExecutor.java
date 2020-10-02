@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,7 @@
  */
 package org.redisson.command;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
+import io.netty.buffer.ByteBuf;
 import org.redisson.SlotCallback;
 import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
@@ -31,6 +28,9 @@ import org.redisson.client.protocol.RedisCommand;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.connection.MasterSlaveEntry;
 import org.redisson.liveobject.core.RedissonObjectBuilder;
+
+import java.util.Collection;
+import java.util.List;
 
 /**
  *
@@ -49,15 +49,17 @@ public interface CommandAsyncExecutor {
     
     CommandAsyncExecutor enableRedissonReferenceSupport(RedissonRxClient redissonReactive);
     
-    boolean isRedissonReferenceSupportEnabled();
-    
     <V> RedisException convertException(RFuture<V> future);
 
-    boolean await(RFuture<?> future, long timeout, TimeUnit timeoutUnit) throws InterruptedException;
-    
     void syncSubscription(RFuture<?> future);
-    
+
+    void syncSubscriptionInterrupted(RFuture<?> future) throws InterruptedException;
+
     <V> V get(RFuture<V> future);
+    
+    <V> V getInterrupted(RFuture<V> future) throws InterruptedException;
+
+    <T, R> RFuture<R> writeAsync(RedisClient client, Codec codec, RedisCommand<T> command, Object... params);
 
     <T, R> RFuture<R> writeAsync(MasterSlaveEntry entry, Codec codec, RedisCommand<T> command, Object... params);
     
@@ -115,4 +117,14 @@ public interface CommandAsyncExecutor {
     
     <V> RFuture<V> pollFromAnyAsync(String name, Codec codec, RedisCommand<Object> command, long secondsTimeout, String... queueNames);
 
+    ByteBuf encode(Codec codec, Object value);
+
+    ByteBuf encodeMapKey(Codec codec, Object value);
+
+    ByteBuf encodeMapValue(Codec codec, Object value);
+
+    <T, R> RFuture<R> readBatchedAsync(Codec codec, RedisCommand<T> command, SlotCallback<T, R> callback, String... keys);
+    
+    <T, R> RFuture<R> writeBatchedAsync(Codec codec, RedisCommand<T> command, SlotCallback<T, R> callback, String... keys);
+    
 }

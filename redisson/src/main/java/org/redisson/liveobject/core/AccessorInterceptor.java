@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,32 +15,31 @@
  */
 package org.redisson.liveobject.core;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Collection;
-import java.util.Map;
-import java.util.concurrent.Callable;
-
+import io.netty.buffer.ByteBuf;
+import net.bytebuddy.implementation.bind.annotation.*;
 import org.redisson.RedissonReference;
-import org.redisson.api.RLiveObject;
-import org.redisson.api.RMap;
-import org.redisson.api.RObject;
-import org.redisson.api.RSetMultimap;
-import org.redisson.api.RedissonClient;
+import org.redisson.RedissonScoredSortedSet;
+import org.redisson.RedissonSetMultimap;
+import org.redisson.api.*;
 import org.redisson.api.annotation.REntity;
 import org.redisson.api.annotation.REntity.TransformationMode;
-import org.redisson.api.annotation.RId;
 import org.redisson.api.annotation.RIndex;
+import org.redisson.client.codec.Codec;
+import org.redisson.client.protocol.RedisCommands;
+import org.redisson.command.CommandAsyncExecutor;
+import org.redisson.command.CommandBatchService;
+import org.redisson.connection.ConnectionManager;
 import org.redisson.liveobject.misc.ClassUtils;
 import org.redisson.liveobject.misc.Introspectior;
 import org.redisson.liveobject.resolver.NamingScheme;
 
-import net.bytebuddy.implementation.bind.annotation.AllArguments;
-import net.bytebuddy.implementation.bind.annotation.FieldValue;
-import net.bytebuddy.implementation.bind.annotation.Origin;
-import net.bytebuddy.implementation.bind.annotation.RuntimeType;
-import net.bytebuddy.implementation.bind.annotation.SuperCall;
-import net.bytebuddy.implementation.bind.annotation.This;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.regex.Pattern;
 
 /**
  * This class is going to be instantiated and becomes a <b>static</b> field of
@@ -52,18 +51,25 @@ import net.bytebuddy.implementation.bind.annotation.This;
  */
 public class AccessorInterceptor {
 
-    private final RedissonClient redisson;
-    private final RedissonObjectBuilder objectBuilder;
+    private static final Pattern GETTER_PATTERN = Pattern.compile("^(get|is)");
+    private static final Pattern SETTER_PATTERN = Pattern.compile("^(set)");
+    private static final Pattern FIELD_PATTERN = Pattern.compile("^(get|set|is)");
 
-    public AccessorInterceptor(RedissonClient redisson, RedissonObjectBuilder objectBuilder) {
-        this.redisson = redisson;
-        this.objectBuilder = objectBuilder;
+    private final CommandAsyncExecutor commandExecutor;
+    private final ConnectionManager connectionManager;
+
+    public AccessorInterceptor(CommandAsyncExecutor commandExecutor, ConnectionManager connectionManager) {
+        this.commandExecutor = commandExecutor;
+        this.connectionManager = connectionManager;
     }
 
     @RuntimeType
-    public Object intercept(@Origin Method method, @SuperCall Callable<?> superMethod,
-            @AllArguments Object[] args, @This Object me,
-            @FieldValue("liveObjectLiveMap") RMap<String, Object> liveMap) throws Exception {
+    @SuppressWarnings("NestedIfDepth")
+    public Object intercept(@Origin Method method,
+                            @SuperCall Callable<?> superMethod,
+                            @AllArguments Object[] args,
+                            @This Object me,
+                            @FieldValue("liveObjectLiveMap") RMap<String, Object> liveMap) throws Exception {
         if (isGetter(method, getREntityIdFieldName(me))) {
             return ((RLiveObject) me).getLiveObjectId();
         }
@@ -72,16 +78,16 @@ public class AccessorInterceptor {
             return null;
         }
 
-        String fieldName = getFieldName(method);
+        String fieldName = getFieldName(me.getClass().getSuperclass(), method);
         Field field = ClassUtils.getDeclaredField(me.getClass().getSuperclass(), fieldName);
         Class<?> fieldType = field.getType();
         
         if (isGetter(method, fieldName)) {
             Object result = liveMap.get(fieldName);
             if (result == null) {
-                RObject ar = objectBuilder.createObject(((RLiveObject) me).getLiveObjectId(), me.getClass().getSuperclass(), fieldType, fieldName, redisson);
+                RObject ar = commandExecutor.getObjectBuilder().createObject(((RLiveObject) me).getLiveObjectId(), me.getClass().getSuperclass(), fieldType, fieldName);
                 if (ar != null) {
-                    objectBuilder.store(ar, fieldName, liveMap);
+                    commandExecutor.getObjectBuilder().store(ar, fieldName, liveMap);
                     return ar;
                 }
             }
@@ -93,7 +99,7 @@ public class AccessorInterceptor {
                 return result;
             }
             if (result instanceof RedissonReference) {
-                return objectBuilder.fromReference(redisson, (RedissonReference) result);
+                return commandExecutor.getObjectBuilder().fromReference((RedissonReference) result);
             }
             return result;
         }
@@ -109,10 +115,16 @@ public class AccessorInterceptor {
                 storeIndex(field, me, liveObject.getLiveObjectId());
                 
                 Class<? extends Object> rEntity = liveObject.getClass().getSuperclass();
-                NamingScheme ns = objectBuilder.getNamingScheme(rEntity);
-                liveMap.fastPut(fieldName, new RedissonReference(rEntity,
-                        ns.getName(rEntity, fieldType, getREntityIdFieldName(liveObject),
-                                liveObject.getLiveObjectId())));
+                NamingScheme ns = commandExecutor.getObjectBuilder().getNamingScheme(rEntity);
+
+                if (commandExecutor instanceof CommandBatchService) {
+                    liveMap.fastPutAsync(fieldName, new RedissonReference(rEntity,
+                            ns.getName(rEntity, liveObject.getLiveObjectId())));
+                } else {
+                    liveMap.fastPut(fieldName, new RedissonReference(rEntity,
+                            ns.getName(rEntity, liveObject.getLiveObjectId())));
+                }
+
                 return me;
             }
             
@@ -121,7 +133,7 @@ public class AccessorInterceptor {
                     && TransformationMode.ANNOTATION_BASED
                             .equals(ClassUtils.getAnnotation(me.getClass().getSuperclass(),
                             REntity.class).fieldTransformation())) {
-                RObject rObject = objectBuilder.createObject(((RLiveObject) me).getLiveObjectId(), me.getClass().getSuperclass(), arg.getClass(), fieldName, redisson);
+                RObject rObject = commandExecutor.getObjectBuilder().createObject(((RLiveObject) me).getLiveObjectId(), me.getClass().getSuperclass(), arg.getClass(), fieldName);
                 if (arg != null) {
                     if (rObject instanceof Collection) {
                         Collection<?> c = (Collection<?>) rObject;
@@ -139,68 +151,130 @@ public class AccessorInterceptor {
             }
             
             if (arg instanceof RObject) {
-                objectBuilder.store((RObject) arg, fieldName, liveMap);
+                if (commandExecutor instanceof CommandBatchService) {
+                    commandExecutor.getObjectBuilder().storeAsync((RObject) arg, fieldName, liveMap);
+                } else {
+                    commandExecutor.getObjectBuilder().store((RObject) arg, fieldName, liveMap);
+                }
                 return me;
             }
 
-            if (arg == null) {
-                Object oldArg = liveMap.remove(fieldName);
-                if (field.getAnnotation(RIndex.class) != null) {
-                    NamingScheme namingScheme = objectBuilder.getNamingScheme(me.getClass().getSuperclass());
-                    String indexName = namingScheme.getIndexName(me.getClass().getSuperclass(), fieldName);
-                    RSetMultimap<Object, Object> map = redisson.getSetMultimap(indexName, namingScheme.getCodec());
-                    if (oldArg instanceof RLiveObject) {
-                        map.remove(((RLiveObject) oldArg).getLiveObjectId(), ((RLiveObject) me).getLiveObjectId());
-                    } else {
-                        map.remove(oldArg, ((RLiveObject) me).getLiveObjectId());
-                    }
-                }
-            } else {
+            removeIndex(liveMap, me, field);
+            if (arg != null) {
                 storeIndex(field, me, arg);
 
-                liveMap.fastPut(fieldName, arg);
+                if (commandExecutor instanceof CommandBatchService) {
+                    liveMap.fastPutAsync(fieldName, arg);
+                } else {
+                    liveMap.fastPut(fieldName, arg);
+                }
             }
             return me;
         }
         return superMethod.call();
     }
 
-    protected void storeIndex(Field field, Object me, Object arg) {
-        if (field.getAnnotation(RIndex.class) != null) {
-            NamingScheme namingScheme = objectBuilder.getNamingScheme(me.getClass().getSuperclass());
-            String indexName = namingScheme.getIndexName(me.getClass().getSuperclass(), field.getName());
-            RSetMultimap<Object, Object> map = redisson.getSetMultimap(indexName, namingScheme.getCodec());
-            map.put(arg, ((RLiveObject) me).getLiveObjectId());
+    private void removeIndex(RMap<String, Object> liveMap, Object me, Field field) {
+        if (field.getAnnotation(RIndex.class) == null) {
+            return;
+        }
+
+        NamingScheme namingScheme = commandExecutor.getObjectBuilder().getNamingScheme(me.getClass().getSuperclass());
+        String indexName = namingScheme.getIndexName(me.getClass().getSuperclass(), field.getName());
+
+        CommandBatchService ce;
+        if (commandExecutor instanceof CommandBatchService) {
+            ce = (CommandBatchService) commandExecutor;
+        } else {
+            ce = new CommandBatchService(connectionManager);
+        }
+
+        if (Number.class.isAssignableFrom(field.getType())) {
+            RScoredSortedSetAsync<Object> set = new RedissonScoredSortedSet<>(namingScheme.getCodec(), ce, indexName, null);
+            set.removeAsync(((RLiveObject) me).getLiveObjectId());
+        } else {
+            if (ClassUtils.isAnnotationPresent(field.getType(), REntity.class)
+                    || connectionManager.isClusterMode()) {
+                Object value = liveMap.remove(field.getName());
+                RMultimapAsync<Object, Object> map = new RedissonSetMultimap<>(namingScheme.getCodec(), ce, indexName);
+                map.removeAsync(((RLiveObject) value).getLiveObjectId(), ((RLiveObject) me).getLiveObjectId());
+            } else {
+                removeAsync(ce, indexName, liveMap.getName(), namingScheme.getCodec(), ((RLiveObject) me).getLiveObjectId(), field.getName());
+            }
+        }
+
+        ce.execute();
+    }
+
+    private void removeAsync(CommandBatchService ce, String name, String mapName, Codec codec, Object value, String fieldName) {
+        ByteBuf valueState = ce.encodeMapValue(codec, value);
+        ce.evalWriteAsync(name, codec, RedisCommands.EVAL_VOID,
+                  "local oldArg = redis.call('hget', KEYS[2], ARGV[2]);" +
+                        "if oldArg == false then " +
+                            "return; " +
+                        "end;" +
+                        "redis.call('hdel', KEYS[2], ARGV[2]); " +
+                        "local hash = redis.call('hget', KEYS[1], oldArg); " +
+                        "local setName = KEYS[1] .. ':' .. hash; " +
+                        "local res = redis.call('srem', setName, ARGV[1]); " +
+                        "if res == 1 and redis.call('scard', setName) == 0 then " +
+                            "redis.call('hdel', KEYS[1], oldArg); " +
+                        "end; ",
+            Arrays.asList(name, mapName),
+                valueState, ce.encodeMapKey(codec, fieldName));
+    }
+
+    private void storeIndex(Field field, Object me, Object arg) {
+        if (field.getAnnotation(RIndex.class) == null) {
+            return;
+        }
+
+        NamingScheme namingScheme = commandExecutor.getObjectBuilder().getNamingScheme(me.getClass().getSuperclass());
+        String indexName = namingScheme.getIndexName(me.getClass().getSuperclass(), field.getName());
+
+        boolean skipExecution = false;
+        CommandBatchService ce;
+        if (commandExecutor instanceof CommandBatchService) {
+            ce = (CommandBatchService) commandExecutor;
+            skipExecution = true;
+        } else {
+            ce = new CommandBatchService(connectionManager);
+        }
+
+        if (arg instanceof Number) {
+            RScoredSortedSetAsync<Object> set = new RedissonScoredSortedSet<>(namingScheme.getCodec(), ce, indexName, null);
+            set.addAsync(((Number) arg).doubleValue(), ((RLiveObject) me).getLiveObjectId());
+        } else {
+            RMultimapAsync<Object, Object> map = new RedissonSetMultimap<>(namingScheme.getCodec(), ce, indexName);
+            map.putAsync(arg, ((RLiveObject) me).getLiveObjectId());
+        }
+
+        if (!skipExecution) {
+            ce.execute();
         }
     }
 
-    private String getFieldName(Method method) {
-        String name = method.getName();
-        int i = 4;
-        if (name.startsWith("is")) {
-            i = 3;
+    private String getFieldName(Class<?> clazz, Method method) {
+        String fieldName = FIELD_PATTERN.matcher(method.getName()).replaceFirst("");
+        String propName = fieldName.substring(0, 1).toLowerCase() + fieldName.substring(1);
+        try {
+            ClassUtils.getDeclaredField(clazz, propName);
+            return propName;
+        } catch (NoSuchFieldException e) {
+            return fieldName;
         }
-        return name.substring(i - 1, i).toLowerCase() + name.substring(i);
     }
 
     private boolean isGetter(Method method, String fieldName) {
-        return method.getName().equals("get" + getFieldNameSuffix(fieldName))
-                || method.getName().equals("is" + getFieldNameSuffix(fieldName));
+        return GETTER_PATTERN.matcher(method.getName()).replaceFirst("").equalsIgnoreCase(fieldName);
     }
 
     private boolean isSetter(Method method, String fieldName) {
-        return method.getName().equals("set" + getFieldNameSuffix(fieldName));
+        return SETTER_PATTERN.matcher(method.getName()).replaceFirst("").equalsIgnoreCase(fieldName);
     }
 
-    private static String getFieldNameSuffix(String fieldName) {
-        return fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
-    }
-
-    private static String getREntityIdFieldName(Object o) throws Exception {
-        return Introspectior
-                .getFieldsWithAnnotation(o.getClass().getSuperclass(), RId.class)
-                .getOnly()
-                .getName();
+    private static String getREntityIdFieldName(Object o) {
+        return Introspectior.getREntityIdFieldName(o.getClass().getSuperclass());
     }
 
 }

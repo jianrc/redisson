@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,6 @@
  */
 package org.redisson.spring.data.connection;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.redisson.api.RFuture;
 import org.redisson.client.BaseRedisPubSubListener;
 import org.redisson.client.ChannelName;
@@ -30,6 +27,10 @@ import org.redisson.pubsub.PublishSubscribeService;
 import org.springframework.data.redis.connection.DefaultMessage;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.connection.util.AbstractSubscription;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * 
@@ -49,17 +50,20 @@ public class RedissonSubscription extends AbstractSubscription {
 
     @Override
     protected void doSubscribe(byte[]... channels) {
-        RedisPubSubListener<?> listener2 = new BaseRedisPubSubListener() {
-            @Override
-            public void onMessage(CharSequence channel, Object message) {
-                DefaultMessage msg = new DefaultMessage(((ChannelName)channel).getName(), (byte[])message);
-                getListener().onMessage(msg, null);
-            }
-        };
-        
         List<RFuture<?>> list = new ArrayList<RFuture<?>>();
         for (byte[] channel : channels) {
-            RFuture<PubSubConnectionEntry> f = subscribeService.subscribe(ByteArrayCodec.INSTANCE, new ChannelName(channel), listener2);
+            RFuture<PubSubConnectionEntry> f = subscribeService.subscribe(ByteArrayCodec.INSTANCE, new ChannelName(channel), new BaseRedisPubSubListener() {
+                @Override
+                public void onMessage(CharSequence ch, Object message) {
+                    if (!Arrays.equals(((ChannelName) ch).getName(), channel)) {
+                        return;
+                    }
+
+                    byte[] m = toBytes(message);
+                    DefaultMessage msg = new DefaultMessage(((ChannelName) ch).getName(), m);
+                    getListener().onMessage(msg, null);
+                }
+            });
             list.add(f);
         }
         for (RFuture<?> future : list) {
@@ -79,7 +83,8 @@ public class RedissonSubscription extends AbstractSubscription {
         RedisPubSubListener<?> listener2 = new BaseRedisPubSubListener() {
             @Override
             public void onPatternMessage(CharSequence pattern, CharSequence channel, Object message) {
-                DefaultMessage msg = new DefaultMessage(((ChannelName)channel).getName(), (byte[])message);
+                byte[] m = toBytes(message);
+                DefaultMessage msg = new DefaultMessage(((ChannelName)channel).getName(), m);
                 getListener().onMessage(msg, ((ChannelName)pattern).getName());
             }
         };
@@ -92,6 +97,13 @@ public class RedissonSubscription extends AbstractSubscription {
         for (RFuture<?> future : list) {
             connectionManager.getCommandExecutor().syncSubscription(future);
         }
+    }
+
+    private byte[] toBytes(Object message) {
+        if (message instanceof String) {
+            return  ((String) message).getBytes();
+        }
+        return (byte[]) message;
     }
 
     @Override

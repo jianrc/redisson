@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
     private volatile int hashIterations;
 
     private final CommandExecutor commandExecutor;
-    private final String configName;
+    private String configName;
 
     protected RedissonBloomFilter(CommandExecutor commandExecutor, String name) {
         super(commandExecutor, name);
@@ -121,7 +121,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
                 bs.setAsync(indexes[i]);
             }
             try {
-                List<Boolean> result = (List<Boolean>) executorService.execute();
+                List<Boolean> result = (List<Boolean>) executorService.execute().getResponses();
 
                 for (Boolean val : result.subList(1, result.size()-1)) {
                     if (!val) {
@@ -130,7 +130,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
                 }
                 return false;
             } catch (RedisException e) {
-                if (!e.getMessage().contains("Bloom filter config has been changed")) {
+                if (e.getMessage() == null || !e.getMessage().contains("Bloom filter config has been changed")) {
                     throw e;
                 }
             }
@@ -172,7 +172,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
                 bs.getAsync(indexes[i]);
             }
             try {
-                List<Boolean> result = (List<Boolean>) executorService.execute();
+                List<Boolean> result = (List<Boolean>) executorService.execute().getResponses();
 
                 for (Boolean val : result.subList(1, result.size()-1)) {
                     if (!val) {
@@ -182,7 +182,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
 
                 return true;
             } catch (RedisException e) {
-                if (!e.getMessage().contains("Bloom filter config has been changed")) {
+                if (e.getMessage() == null || !e.getMessage().contains("Bloom filter config has been changed")) {
                     throw e;
                 }
             }
@@ -217,7 +217,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
 
     @Override
     public RFuture<Boolean> deleteAsync() {
-        return commandExecutor.writeAsync(getName(), RedisCommands.DEL_OBJECTS, getName(), configName);
+        return deleteAsync(getName(), configName);
     }
 
     @Override
@@ -278,7 +278,7 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
         try {
             executorService.execute();
         } catch (RedisException e) {
-            if (!e.getMessage().contains("Bloom filter config has been changed")) {
+            if (e.getMessage() == null || !e.getMessage().contains("Bloom filter config has been changed")) {
                 throw e;
             }
             readConfig();
@@ -290,28 +290,17 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
 
     @Override
     public RFuture<Boolean> expireAsync(long timeToLive, TimeUnit timeUnit) {
-        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('pexpire', KEYS[1], ARGV[1]); " +
-                        "return redis.call('pexpire', KEYS[2], ARGV[1]); ",
-                Arrays.<Object>asList(getName(), configName),
-                timeUnit.toMillis(timeToLive));
+        return expireAsync(timeToLive, timeUnit, getName(), configName);
     }
 
     @Override
     public RFuture<Boolean> expireAtAsync(long timestamp) {
-        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('pexpireat', KEYS[1], ARGV[1]); " +
-                        "return redis.call('pexpireat', KEYS[2], ARGV[1]); ",
-                Arrays.<Object>asList(getName(), configName),
-                timestamp);
+        return expireAtAsync(timestamp, getName(), configName);
     }
 
     @Override
     public RFuture<Boolean> clearExpireAsync() {
-        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('persist', KEYS[1]); " +
-                        "return redis.call('persist', KEYS[2]); ",
-                Arrays.<Object>asList(getName(), configName));
+        return clearExpireAsync(getName(), configName);
     }
     
     @Override
@@ -336,6 +325,42 @@ public class RedissonBloomFilter<T> extends RedissonExpirable implements RBloomF
     public int getHashIterations() {
         Integer result = commandExecutor.read(configName, IntegerCodec.INSTANCE, RedisCommands.HGET, configName, "hashIterations");
         return check(result);
+    }
+
+    @Override
+    public RFuture<Void> renameAsync(String newName) {
+        String newConfigName = suffixName(newName, "config");
+        RFuture<Void> f = commandExecutor.evalWriteAsync(getName(), StringCodec.INSTANCE, RedisCommands.EVAL_VOID,
+                "redis.call('rename', KEYS[1], ARGV[1]); "
+                        + " return redis.call('rename', KEYS[2], ARGV[2]); ",
+                Arrays.<Object>asList(getName(), configName), newName, newConfigName);
+        f.onComplete((value, e) -> {
+            if (e == null) {
+                this.name = newName;
+                this.configName = newConfigName;
+            }
+        });
+        return f;
+    }
+
+    @Override
+    public RFuture<Boolean> renamenxAsync(String newName) {
+        String newConfigName = suffixName(newName, "config");
+        RFuture<Boolean> f = commandExecutor.evalWriteAsync(getName(), StringCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
+                "local r = redis.call('renamenx', KEYS[1], ARGV[1]); "
+                        + "if r == 0 then "
+                        + "  return 0; "
+                        + "else  "
+                        + "  return redis.call('renamenx', KEYS[2], ARGV[2]); "
+                        + "end; ",
+                Arrays.<Object>asList(getName(), configName), newName, newConfigName);
+        f.onComplete((value, e) -> {
+            if (e == null && value) {
+                this.name = newName;
+                this.configName = newConfigName;
+            }
+        });
+        return f;
     }
 
     private <V> V check(V result) {

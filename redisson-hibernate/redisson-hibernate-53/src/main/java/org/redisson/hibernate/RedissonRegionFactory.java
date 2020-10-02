@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,11 @@
  */
 package org.redisson.hibernate;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Arrays;
-import java.util.Map;
-
 import org.hibernate.boot.registry.selector.spi.StrategySelector;
 import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.CacheException;
 import org.hibernate.cache.cfg.spi.DomainDataRegionBuildingContext;
 import org.hibernate.cache.cfg.spi.DomainDataRegionConfig;
-import org.hibernate.cache.internal.DefaultCacheKeysFactory;
 import org.hibernate.cache.spi.CacheKeysFactory;
 import org.hibernate.cache.spi.DomainDataRegion;
 import org.hibernate.cache.spi.access.AccessType;
@@ -43,6 +36,12 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.LongCodec;
 import org.redisson.config.Config;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Map;
 
 /**
  * Hibernate Cache region factory based on Redisson. 
@@ -74,18 +73,25 @@ public class RedissonRegionFactory extends RegionFactoryTemplate {
     public static final String CONFIG_PREFIX = "hibernate.cache.redisson.";
     
     public static final String REDISSON_CONFIG_PATH = CONFIG_PREFIX + "config";
-    
+
+    public static final String FALLBACK = CONFIG_PREFIX + "fallback";
+
     private RedissonClient redisson;
     private CacheKeysFactory cacheKeysFactory;
-    
+    protected boolean fallback;
+
+    @Override
+    protected CacheKeysFactory getImplicitCacheKeysFactory() {
+        return cacheKeysFactory;
+    }
+
     @Override
     protected void prepareForUse(SessionFactoryOptions settings, @SuppressWarnings("rawtypes") Map properties) throws CacheException {
         this.redisson = createRedissonClient(properties);
         
         StrategySelector selector = settings.getServiceRegistry().getService(StrategySelector.class);
         cacheKeysFactory = selector.resolveDefaultableStrategy(CacheKeysFactory.class, 
-                properties.get(Environment.CACHE_KEYS_FACTORY), DefaultCacheKeysFactory.INSTANCE);
-
+                properties.get(Environment.CACHE_KEYS_FACTORY), new RedissonCacheKeysFactory(redisson.getConfig().getCodec()));
     }
 
     protected RedissonClient createRedissonClient(Map properties) {
@@ -106,7 +112,9 @@ public class RedissonRegionFactory extends RegionFactoryTemplate {
         if (config == null) {
             throw new CacheException("Unable to locate Redisson configuration");
         }
-        
+
+        String fallbackValue = (String) properties.getOrDefault(FALLBACK, "false");
+        fallback = Boolean.valueOf(fallbackValue);
         return Redisson.create(config);
     }
     
@@ -158,16 +166,23 @@ public class RedissonRegionFactory extends RegionFactoryTemplate {
     @Override
     public long nextTimestamp() {
         long time = System.currentTimeMillis() << 12;
-        return redisson.getScript(LongCodec.INSTANCE).eval(RScript.Mode.READ_WRITE,
-                  "local currentTime = redis.call('get', KEYS[1]);"
-                + "if currentTime == false then "
-                    + "redis.call('set', KEYS[1], ARGV[1]); "
-                    + "return ARGV[1]; "
-                + "end;"
-                + "local nextValue = math.max(tonumber(ARGV[1]), tonumber(currentTime) + 1); "
-                + "redis.call('set', KEYS[1], nextValue); "
-                + "return nextValue;",
-                RScript.ReturnType.INTEGER, Arrays.<Object>asList("redisson-hibernate-timestamp"), time);
+        try {
+            return redisson.getScript(LongCodec.INSTANCE).eval(RScript.Mode.READ_WRITE,
+                    "local currentTime = redis.call('get', KEYS[1]);"
+                            + "if currentTime == false then "
+                            + "redis.call('set', KEYS[1], ARGV[1]); "
+                            + "return ARGV[1]; "
+                            + "end;"
+                            + "local nextValue = math.max(tonumber(ARGV[1]), tonumber(currentTime) + 1); "
+                            + "redis.call('set', KEYS[1], nextValue); "
+                            + "return nextValue;",
+                    RScript.ReturnType.INTEGER, Arrays.<Object>asList("redisson-hibernate-timestamp"), time);
+        } catch (Exception e) {
+            if (fallback) {
+                return super.nextTimestamp();
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -179,11 +194,11 @@ public class RedissonRegionFactory extends RegionFactoryTemplate {
                 regionConfig,
                 this,
                 createDomainDataStorageAccess( regionConfig, buildingContext ),
-                cacheKeysFactory,
+                getImplicitCacheKeysFactory(),
                 buildingContext
         );
     }
-    
+
     @Override
     protected DomainDataStorageAccess createDomainDataStorageAccess(DomainDataRegionConfig regionConfig,
             DomainDataRegionBuildingContext buildingContext) {
@@ -199,21 +214,21 @@ public class RedissonRegionFactory extends RegionFactoryTemplate {
         }
         
         RMapCache<Object, Object> mapCache = getCache(regionConfig.getRegionName(), buildingContext.getSessionFactory().getProperties(), defaultKey);
-        return new RedissonStorage(mapCache, buildingContext.getSessionFactory().getProperties(), defaultKey);
+        return new RedissonStorage(mapCache, ((Redisson)redisson).getConnectionManager(), buildingContext.getSessionFactory().getProperties(), defaultKey);
     }
     
     @Override
     protected StorageAccess createQueryResultsRegionStorageAccess(String regionName,
             SessionFactoryImplementor sessionFactory) {
         RMapCache<Object, Object> mapCache = getCache(regionName, sessionFactory.getProperties(), QUERY_DEF);
-        return new RedissonStorage(mapCache, sessionFactory.getProperties(), QUERY_DEF);
+        return new RedissonStorage(mapCache, ((Redisson)redisson).getConnectionManager(), sessionFactory.getProperties(), QUERY_DEF);
     }
 
     @Override
     protected StorageAccess createTimestampsRegionStorageAccess(String regionName,
             SessionFactoryImplementor sessionFactory) {
         RMapCache<Object, Object> mapCache = getCache(regionName, sessionFactory.getProperties(), TIMESTAMPS_DEF);
-        return new RedissonStorage(mapCache, sessionFactory.getProperties(), TIMESTAMPS_DEF);
+        return new RedissonStorage(mapCache, ((Redisson)redisson).getConnectionManager(), sessionFactory.getProperties(), TIMESTAMPS_DEF);
     }
 
     protected RMapCache<Object, Object> getCache(String regionName, Map properties, String defaultKey) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,10 @@
 package org.redisson;
 
 import java.math.BigDecimal;
-import java.util.AbstractCollection;
-import java.util.AbstractSet;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import org.redisson.api.MapOptions;
 import org.redisson.api.MapOptions.WriteMode;
@@ -54,8 +43,8 @@ import org.redisson.client.protocol.convertor.NumberConvertor;
 import org.redisson.client.protocol.decoder.MapScanResult;
 import org.redisson.command.CommandAsyncExecutor;
 import org.redisson.connection.decoder.MapGetAllDecoder;
+import org.redisson.iterator.RedissonMapIterator;
 import org.redisson.mapreduce.RedissonMapReduce;
-import org.redisson.misc.Hash;
 import org.redisson.misc.RPromise;
 import org.redisson.misc.RedissonPromise;
 import org.slf4j.Logger;
@@ -76,86 +65,440 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
     
-    final AtomicInteger writeBehindCurrentThreads = new AtomicInteger();
-    final Queue<Runnable> writeBehindTasks;
     final RedissonClient redisson;
     final MapOptions<K, V> options;
+    final WriteBehindService writeBehindService;
+    final MapWriteBehindTask writeBehindTask;
     
-    public RedissonMap(CommandAsyncExecutor commandExecutor, String name, RedissonClient redisson, MapOptions<K, V> options) {
+    public RedissonMap(CommandAsyncExecutor commandExecutor, String name, RedissonClient redisson, MapOptions<K, V> options, WriteBehindService writeBehindService) {
         super(commandExecutor, name);
         this.redisson = redisson;
         this.options = options;
         if (options != null && options.getWriteMode() == WriteMode.WRITE_BEHIND) {
-            writeBehindTasks = new ConcurrentLinkedQueue<Runnable>();
+            this.writeBehindService = writeBehindService;
+            writeBehindTask = writeBehindService.start(name, options);
         } else {
-            writeBehindTasks = null;
+            this.writeBehindService = null;
+            writeBehindTask = null;
         }
     }
 
-    public RedissonMap(Codec codec, CommandAsyncExecutor commandExecutor, String name, RedissonClient redisson, MapOptions<K, V> options) {
+    public RedissonMap(Codec codec, CommandAsyncExecutor commandExecutor, String name, RedissonClient redisson, MapOptions<K, V> options, WriteBehindService writeBehindService) {
         super(codec, commandExecutor, name);
         this.redisson = redisson;
         this.options = options;
         if (options != null && options.getWriteMode() == WriteMode.WRITE_BEHIND) {
-            writeBehindTasks = new ConcurrentLinkedQueue<Runnable>();
+            this.writeBehindService = writeBehindService;
+            writeBehindTask = writeBehindService.start(name, options);
         } else {
-            writeBehindTasks = null;
+            this.writeBehindService = null;
+            writeBehindTask = null;
         }
     }
     
     @Override
     public <KOut, VOut> RMapReduce<K, V, KOut, VOut> mapReduce() {
-        return new RedissonMapReduce<K, V, KOut, VOut>(this, redisson, commandExecutor.getConnectionManager());
+        return new RedissonMapReduce<>(this, redisson, commandExecutor.getConnectionManager());
     }
     
     @Override
     public RPermitExpirableSemaphore getPermitExpirableSemaphore(K key) {
-        String lockName = getLockName(key, "permitexpirablesemaphore");
-        return new RedissonPermitExpirableSemaphore(commandExecutor, lockName, ((Redisson) redisson).getSemaphorePubSub());
+        String lockName = getLockByMapKey(key, "permitexpirablesemaphore");
+        return new RedissonPermitExpirableSemaphore(commandExecutor, lockName);
     }
 
     @Override
     public RSemaphore getSemaphore(K key) {
-        String lockName = getLockName(key, "semaphore");
-        return new RedissonSemaphore(commandExecutor, lockName, ((Redisson) redisson).getSemaphorePubSub());
+        String lockName = getLockByMapKey(key, "semaphore");
+        return new RedissonSemaphore(commandExecutor, lockName);
     }
     
     @Override
     public RCountDownLatch getCountDownLatch(K key) {
-        String lockName = getLockName(key, "countdownlatch");
+        String lockName = getLockByMapKey(key, "countdownlatch");
         return new RedissonCountDownLatch(commandExecutor, lockName);
     }
     
     @Override
     public RLock getFairLock(K key) {
-        String lockName = getLockName(key, "fairlock");
+        String lockName = getLockByMapKey(key, "fairlock");
         return new RedissonFairLock(commandExecutor, lockName);
     }
     
     @Override
     public RLock getLock(K key) {
-        String lockName = getLockName(key, "lock");
+        String lockName = getLockByMapKey(key, "lock");
         return new RedissonLock(commandExecutor, lockName);
     }
     
     @Override
     public RReadWriteLock getReadWriteLock(K key) {
-        String lockName = getLockName(key, "rw_lock");
+        String lockName = getLockByMapKey(key, "rw_lock");
         return new RedissonReadWriteLock(commandExecutor, lockName);
-    }
-    
-    public String getLockName(Object key, String suffix) {
-        ByteBuf keyState = encodeMapKey(key);
-        try {
-            return suffixName(getName(key), Hash.hash128toBase64(keyState) + ":" + suffix);
-        } finally {
-            keyState.release();
-        }
     }
     
     @Override
     public int size() {
         return get(sizeAsync());
+    }
+
+    @Override
+    public V merge(K key, V value, BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
+        checkKey(key);
+        checkValue(value);
+        Objects.requireNonNull(remappingFunction);
+
+        RLock lock = getLock(key);
+        lock.lock();
+        try {
+            V oldValue = get(key);
+            V newValue = value;
+            if (oldValue != null) {
+                newValue = remappingFunction.apply(oldValue, value);
+            }
+
+            if (newValue == null) {
+                fastRemove(key);
+            } else {
+                fastPut(key, newValue);
+            }
+            return newValue;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public RFuture<V> mergeAsync(K key, V value, BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
+        checkKey(key);
+        checkValue(value);
+        Objects.requireNonNull(remappingFunction);
+
+        RLock lock = getLock(key);
+        RPromise<V> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
+        lock.lockAsync(threadId).onComplete((r, e) -> {
+            if (e != null) {
+                result.tryFailure(e);
+                return;
+            }
+
+            RFuture<V> oldValueFuture = getAsync(key);
+            oldValueFuture.onComplete((oldValue, ex) -> {
+                if (ex != null) {
+                    lock.unlockAsync(threadId);
+                    result.tryFailure(ex);
+                    return;
+                }
+
+                RPromise<V> newValuePromise = new RedissonPromise<>();
+                if (oldValue != null) {
+                    commandExecutor.getConnectionManager().getExecutor().execute(() -> {
+                        V newValue;
+                        try {
+                            newValue = remappingFunction.apply(oldValue, value);
+                        } catch (Exception exception) {
+                            lock.unlockAsync(threadId);
+                            result.tryFailure(exception);
+                            return;
+                        }
+                        newValuePromise.trySuccess(newValue);
+                    });
+                } else {
+                    newValuePromise.trySuccess(value);
+                }
+                newValuePromise.onComplete((newValue, ee) -> {
+                    RFuture<?> future;
+                    if (newValue != null) {
+                        future = fastPutAsync(key, newValue);
+                    } else {
+                        future = fastRemoveAsync(key);
+                    }
+                    future.onComplete((res, exc) -> {
+                        lock.unlockAsync(threadId);
+                        if (exc != null) {
+                            result.tryFailure(exc);
+                            return;
+                        }
+
+                        result.trySuccess(newValue);
+                    });
+                });
+            });
+        });
+        return result;
+    }
+
+    @Override
+    public RFuture<V> computeAsync(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+        checkKey(key);
+        Objects.requireNonNull(remappingFunction);
+
+        RLock lock = getLock(key);
+        RPromise<V> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
+        lock.lockAsync(threadId).onComplete((r, e) -> {
+            if (e != null) {
+                result.tryFailure(e);
+                return;
+            }
+
+            RFuture<V> oldValueFuture = getAsync(key);
+            oldValueFuture.onComplete((oldValue, ex) -> {
+                if (ex != null) {
+                    lock.unlockAsync(threadId);
+                    result.tryFailure(ex);
+                    return;
+                }
+
+                commandExecutor.getConnectionManager().getExecutor().execute(() -> {
+                    V newValue;
+                    try {
+                        newValue = remappingFunction.apply(key, oldValue);
+                    } catch (Exception exception) {
+                        lock.unlockAsync(threadId);
+                        result.tryFailure(exception);
+                        return;
+                    }
+
+                    if (newValue == null) {
+                        if (oldValue != null) {
+                            fastRemoveAsync(key).onComplete((res, exc) -> {
+                                lock.unlockAsync(threadId);
+                                if (exc != null) {
+                                    result.tryFailure(exc);
+                                    return;
+                                }
+
+                                result.trySuccess(newValue);
+                            });
+                            return;
+                        }
+                    } else {
+                        fastPutAsync(key, newValue).onComplete((res, exc) -> {
+                            lock.unlockAsync(threadId);
+                            if (exc != null) {
+                                result.tryFailure(exc);
+                                return;
+                            }
+
+                            result.trySuccess(newValue);
+                        });
+                        return;
+                    }
+
+                    lock.unlockAsync(threadId);
+                    result.trySuccess(newValue);
+                });
+            });
+        });
+        return result;
+
+    }
+
+    @Override
+    public V compute(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+        checkKey(key);
+        Objects.requireNonNull(remappingFunction);
+
+        RLock lock = getLock(key);
+        lock.lock();
+        try {
+            V oldValue = get(key);
+
+            V newValue = remappingFunction.apply(key, oldValue);
+            if (newValue == null) {
+                if (oldValue != null) {
+                    fastRemove(key);
+                }
+            } else {
+                fastPut(key, newValue);
+            }
+            return newValue;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public RFuture<V> computeIfAbsentAsync(K key, Function<? super K, ? extends V> mappingFunction) {
+        checkKey(key);
+        Objects.requireNonNull(mappingFunction);
+
+        RLock lock = getLock(key);
+        RPromise<V> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
+        lock.lockAsync(threadId).onComplete((r, e) -> {
+            if (e != null) {
+                result.tryFailure(e);
+                return;
+            }
+
+            RFuture<V> oldValueFuture = getAsync(key);
+            oldValueFuture.onComplete((oldValue, ex) -> {
+                if (ex != null) {
+                    lock.unlockAsync(threadId);
+                    result.tryFailure(ex);
+                    return;
+                }
+
+                if (oldValue != null) {
+                    lock.unlockAsync(threadId);
+                    result.trySuccess(oldValue);
+                    return;
+                }
+
+                commandExecutor.getConnectionManager().getExecutor().execute(() -> {
+                    V newValue;
+                    try {
+                        newValue = mappingFunction.apply(key);
+                    } catch (Exception exception) {
+                        lock.unlockAsync(threadId);
+                        result.tryFailure(exception);
+                        return;
+                    }
+                    if (newValue != null) {
+                        fastPutAsync(key, newValue).onComplete((res, exc) -> {
+                            lock.unlockAsync(threadId);
+                            if (exc != null) {
+                                result.tryFailure(exc);
+                                return;
+                            }
+
+                            result.trySuccess(newValue);
+                        });
+                        return;
+                    }
+
+                    lock.unlockAsync(threadId);
+                    result.trySuccess(null);
+                });
+            });
+        });
+        return result;
+    }
+
+    @Override
+    public V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
+        checkKey(key);
+        Objects.requireNonNull(mappingFunction);
+
+        RLock lock = getLock(key);
+        lock.lock();
+        try {
+            V value = get(key);
+            if (value == null) {
+                V newValue = mappingFunction.apply(key);
+                if (newValue != null) {
+                    fastPut(key, newValue);
+                    return newValue;
+                }
+                return null;
+            }
+            return value;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public RFuture<V> computeIfPresentAsync(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+        checkKey(key);
+        Objects.requireNonNull(remappingFunction);
+
+        RLock lock = getLock(key);
+        RPromise<V> result = new RedissonPromise<>();
+        long threadId = Thread.currentThread().getId();
+        lock.lockAsync(threadId).onComplete((r, e) -> {
+            if (e != null) {
+                result.tryFailure(e);
+                return;
+            }
+            RFuture<V> oldValueFuture = getAsync(key);
+            oldValueFuture.onComplete((oldValue, ex) -> {
+                if (ex != null) {
+                    lock.unlockAsync(threadId);
+                    result.tryFailure(e);
+                    return;
+                }
+
+                if (oldValue == null) {
+                    lock.unlockAsync(threadId);
+                    result.trySuccess(null);
+                    return;
+                }
+
+                commandExecutor.getConnectionManager().getExecutor().execute(() -> {
+                    V newValue;
+                    try {
+                        newValue = remappingFunction.apply(key, oldValue);
+                    } catch (Exception exception) {
+                        lock.unlockAsync(threadId);
+                        result.tryFailure(exception);
+                        return;
+                    }
+                    if (newValue != null) {
+                        RFuture<Boolean> replaceFuture = replaceAsync(key, oldValue, newValue);
+                        replaceFuture.onComplete((re, ex1) -> {
+                            lock.unlockAsync(threadId);
+                            if (ex1 != null) {
+                                result.tryFailure(ex1);
+                                return;
+                            }
+
+                            if (re) {
+                                result.trySuccess(newValue);
+                            } else {
+                                result.trySuccess(oldValue);
+                            }
+                        });
+                    } else if (remove(key, oldValue)) {
+                        RFuture<Boolean> removeFuture = removeAsync(key, oldValue);
+                        removeFuture.onComplete((re, ex1) -> {
+                            lock.unlockAsync(threadId);
+                            if (ex1 != null) {
+                                result.tryFailure(ex1);
+                                return;
+                            }
+
+                            if (re) {
+                                result.trySuccess(null);
+                            } else {
+                                result.trySuccess(oldValue);
+                            }
+                        });
+                    }
+                });
+            });
+        });
+        return result;
+    }
+
+    @Override
+    public V computeIfPresent(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+        checkKey(key);
+        Objects.requireNonNull(remappingFunction);
+
+        RLock lock = getLock(key);
+        lock.lock();
+        try {
+            V oldValue = get(key);
+            if (oldValue == null) {
+                return null;
+            }
+
+            V newValue = remappingFunction.apply(key, oldValue);
+            if (newValue != null) {
+                if (replace(key, oldValue, newValue)) {
+                    return newValue;
+                }
+            } else if (remove(key, oldValue)) {
+                return null;
+            }
+            return oldValue;
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
@@ -171,8 +514,9 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     @Override
     public RFuture<Integer> valueSizeAsync(K key) {
         checkKey(key);
-        
-        return commandExecutor.readAsync(getName(), codec, RedisCommands.HSTRLEN, getName(key), encodeMapKey(key));
+
+        String name = getName(key);
+        return commandExecutor.readAsync(name, codec, RedisCommands.HSTRLEN, name, encodeMapKey(key));
     }
 
     protected void checkKey(Object key) {
@@ -194,8 +538,9 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     @Override
     public RFuture<Boolean> containsKeyAsync(Object key) {
         checkKey(key);
-        
-        return commandExecutor.readAsync(getName(key), codec, RedisCommands.HEXISTS, getName(key), encodeMapKey(key));
+
+        String name = getName(key);
+        return commandExecutor.readAsync(name, codec, RedisCommands.HEXISTS, name, encodeMapKey(key));
     }
 
     @Override
@@ -215,7 +560,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
                             + "end "
                        + "end;" +
                      "return 0",
-                Collections.<Object>singletonList(getName()), encodeMapValue(value));
+                Collections.singletonList(getName()), encodeMapValue(value));
     }
 
     @Override
@@ -226,7 +571,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     @Override
     public RFuture<Map<K, V>> getAllAsync(Set<K> keys) {
         if (keys.isEmpty()) {
-            return RedissonPromise.newSucceededFuture(Collections.<K, V>emptyMap());
+            return RedissonPromise.newSucceededFuture(Collections.emptyMap());
         }
 
         RFuture<Map<K, V>> future = getAllOperationAsync(keys);
@@ -234,7 +579,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
 
-        RPromise<Map<K, V>> result = new RedissonPromise<Map<K, V>>();
+        RPromise<Map<K, V>> result = new RedissonPromise<>();
         future.onComplete((res, e) -> {
             if (e != null) {
                 result.tryFailure(e);
@@ -260,10 +605,10 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     }
 
     public RFuture<Map<K, V>> getAllOperationAsync(Set<K> keys) {
-        List<Object> args = new ArrayList<Object>(keys.size() + 1);
+        List<Object> args = new ArrayList<>(keys.size() + 1);
         args.add(getName());
         encodeMapKeys(args, keys);
-        RFuture<Map<K, V>> future = commandExecutor.readAsync(getName(), codec, new RedisCommand<Map<Object, Object>>("HMGET", new MapGetAllDecoder(new ArrayList<Object>(keys), 0), ValueType.MAP_VALUE), 
+        RFuture<Map<K, V>> future = commandExecutor.readAsync(getName(), codec, new RedisCommand<>("HMGET", new MapGetAllDecoder(new ArrayList<>(keys), 0), ValueType.MAP_VALUE), 
                 args.toArray());
         return future;
     }
@@ -299,7 +644,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
         AtomicInteger counter = new AtomicInteger();
         Iterator<Entry<K, V>> iter = ((Map<K, V>) map).entrySet().iterator();
         
-        RPromise<Void> promise = new RedissonPromise<Void>();
+        RPromise<Void> promise = new RedissonPromise<>();
         putAllAsync(batch, iter, counter, batchSize, promise);
         return promise;
     }
@@ -353,40 +698,43 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<Void> listener = new MapWriterTask<Void>() {
-            @Override
-            public void execute() {
-                options.getWriter().writeAll((Map<K, V>) map);
-            }
-        };
-        return mapWriterFuture(future, listener);
+        return mapWriterFuture(future, new MapWriterTask.Add(map));
     }
 
-    protected final <M> RFuture<M> mapWriterFuture(RFuture<M> future, MapWriterTask<M> listener) {
+    protected final <M> RFuture<M> mapWriterFuture(RFuture<M> future, MapWriterTask task) {
+        return mapWriterFuture(future, task, r -> true);
+    }
+    
+    protected final <M> RFuture<M> mapWriterFuture(RFuture<M> future, MapWriterTask task, Function<M, Boolean> condition) {
         if (options != null && options.getWriteMode() == WriteMode.WRITE_BEHIND) {
-            future.onComplete(new MapWriteBehindListener<M>(commandExecutor, listener, writeBehindCurrentThreads, writeBehindTasks, options.getWriteBehindThreads()));
+            future.onComplete((res, e) -> {
+                if (e == null && condition.apply(res)) {
+                    writeBehindTask.addTask(task);
+                }
+            });
             return future;
         }        
 
-        final RPromise<M> promise = new RedissonPromise<M>();
+        final RPromise<M> promise = new RedissonPromise<>();
         future.onComplete((res, e) -> {
             if (e != null) {
                 promise.tryFailure(e);
                 return;
             }
 
-            if (listener.condition(res)) {
-                commandExecutor.getConnectionManager().getExecutor().execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            listener.execute();
-                        } catch (Exception e) {
-                            promise.tryFailure(e);
-                            return;
+            if (condition.apply(res)) {
+                commandExecutor.getConnectionManager().getExecutor().execute(() -> {
+                    try {
+                        if (task instanceof MapWriterTask.Add) {
+                            options.getWriter().write(task.getMap());
+                        } else {
+                            options.getWriter().delete(task.getKeys());
                         }
-                        promise.trySuccess(res);
+                    } catch (Exception ex) {
+                        promise.tryFailure(ex);
+                        return;
                     }
+                    promise.trySuccess(res);
                 });
             } else {
                 promise.trySuccess(res);
@@ -397,7 +745,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     }
 
     protected RFuture<Void> putAllOperationAsync(Map<? extends K, ? extends V> map) {
-        List<Object> params = new ArrayList<Object>(map.size()*2 + 1);
+        List<Object> params = new ArrayList<>(map.size()*2 + 1);
         params.add(getName());
         for (java.util.Map.Entry<? extends K, ? extends V> t : map.entrySet()) {
             checkKey(t.getKey());
@@ -532,19 +880,8 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, value);
-            }
-            
-            @Override
-            protected boolean condition(V res) {
-                return res == null;
-            }
-
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add task = new MapWriterTask.Add(key, value);
+        return mapWriterFuture(future, task, r -> r == null);
     }
 
     protected boolean hasNoWriter() {
@@ -552,13 +889,14 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     }
 
     protected RFuture<V> putIfAbsentOperationAsync(K key, V value) {
-        return commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_MAP_VALUE,
+        String name = getName(key);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_MAP_VALUE,
                  "if redis.call('hsetnx', KEYS[1], ARGV[1], ARGV[2]) == 1 then "
                     + "return nil "
                 + "else "
                     + "return redis.call('hget', KEYS[1], ARGV[1]) "
                 + "end",
-                Collections.<Object>singletonList(getName(key)), encodeMapKey(key), encodeMapValue(value));
+                Collections.singletonList(name), encodeMapKey(key), encodeMapValue(value));
     }
 
     @Override
@@ -576,23 +914,13 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, value);
-            }
-            
-            @Override
-            protected boolean condition(Boolean res) {
-                return res;
-            }
-
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add task = new MapWriterTask.Add(key, value);
+        return mapWriterFuture(future, task, Function.identity());
     }
 
     protected RFuture<Boolean> fastPutIfAbsentOperationAsync(K key, V value) {
-        return commandExecutor.writeAsync(getName(key), codec, RedisCommands.HSETNX, getName(key), encodeMapKey(key), encodeMapValue(value));
+        String name = getName(key);
+        return commandExecutor.writeAsync(name, codec, RedisCommands.HSETNX, name, encodeMapKey(key), encodeMapValue(value));
     }
 
     @Override
@@ -610,29 +938,19 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            public void execute() {
-                options.getWriter().delete((K) key);
-            }
-            
-            @Override
-            protected boolean condition(Boolean res) {
-                return res;
-            }
-
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Remove listener = new MapWriterTask.Remove(key);
+        return mapWriterFuture(future, listener, Function.identity());
     }
 
     protected RFuture<Boolean> removeOperationAsync(Object key, Object value) {
-        RFuture<Boolean> future = commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_BOOLEAN,
+        String name = getName(key);
+        RFuture<Boolean> future = commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_BOOLEAN,
                 "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then "
                         + "return redis.call('hdel', KEYS[1], ARGV[1]) "
                 + "else "
                     + "return 0 "
                 + "end",
-            Collections.<Object>singletonList(getName(key)), encodeMapKey(key), encodeMapValue(value));
+            Collections.singletonList(name), encodeMapKey(key), encodeMapValue(value));
         return future;
     }
 
@@ -662,30 +980,20 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, newValue);
-            }
-            
-            @Override
-            protected boolean condition(Boolean res) {
-                return res;
-            }
-
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add task = new MapWriterTask.Add(key, newValue);
+        return mapWriterFuture(future, task, Function.identity());
     }
 
     protected RFuture<Boolean> replaceOperationAsync(K key, V oldValue, V newValue) {
-        return commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_BOOLEAN,
+        String name = getName(key);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_BOOLEAN,
                 "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then "
                     + "redis.call('hset', KEYS[1], ARGV[1], ARGV[3]); "
                     + "return 1; "
                 + "else "
                     + "return 0; "
                 + "end",
-                Collections.<Object>singletonList(getName(key)), encodeMapKey(key), encodeMapValue(oldValue), encodeMapValue(newValue));
+                Collections.singletonList(name), encodeMapKey(key), encodeMapValue(oldValue), encodeMapValue(newValue));
     }
 
     @Override
@@ -703,23 +1011,13 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, value);
-            }
-            
-            @Override
-            protected boolean condition(V res) {
-                return res != null;
-            }
-
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add task = new MapWriterTask.Add(key, value);
+        return mapWriterFuture(future, task, r -> r != null);
     }
 
     protected RFuture<V> replaceOperationAsync(K key, V value) {
-        return commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_MAP_VALUE,
+        String name = getName(key);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_MAP_VALUE,
                 "if redis.call('hexists', KEYS[1], ARGV[1]) == 1 then "
                     + "local v = redis.call('hget', KEYS[1], ARGV[1]); "
                     + "redis.call('hset', KEYS[1], ARGV[1], ARGV[2]); "
@@ -727,7 +1025,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
                 + "else "
                     + "return nil; "
                 + "end",
-            Collections.<Object>singletonList(getName(key)), encodeMapKey(key), encodeMapValue(value));
+            Collections.singletonList(name), encodeMapKey(key), encodeMapValue(value));
     }
     
     @Override
@@ -745,34 +1043,26 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, value);
-            }
-            
-            @Override
-            protected boolean condition(Boolean res) {
-                return res;
-            }
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add task = new MapWriterTask.Add(key, value);
+        return mapWriterFuture(future, task, Function.identity());
     }
 
     protected RFuture<Boolean> fastReplaceOperationAsync(K key, V value) {
-        return commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_BOOLEAN,
+        String name = getName(key);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_BOOLEAN,
                 "if redis.call('hexists', KEYS[1], ARGV[1]) == 1 then "
                     + "redis.call('hset', KEYS[1], ARGV[1], ARGV[2]); "
                     + "return 1; "
                 + "else "
                     + "return 0; "
                 + "end",
-            Collections.<Object>singletonList(getName(key)), encodeMapKey(key), encodeMapValue(value));
+            Collections.singletonList(name), encodeMapKey(key), encodeMapValue(value));
     }
     
 
     public RFuture<V> getOperationAsync(K key) {
-        return commandExecutor.readAsync(getName(key), codec, RedisCommands.HGET, getName(key), encodeMapKey(key));
+        String name = getName(key);
+        return commandExecutor.readAsync(name, codec, RedisCommands.HGET, name, encodeMapKey(key));
     }
     
     @Override
@@ -784,7 +1074,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        RPromise<V> result = new RedissonPromise<V>();
+        RPromise<V> result = new RedissonPromise<>();
         future.onComplete((res, e) -> {
             if (e != null) {
                 result.tryFailure(e);
@@ -798,10 +1088,6 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             }
         });
         return result;
-    }
-    
-    private RFuture<V> externalPutAsync(K key, V value) {
-        return putAsync(key, value);
     }
     
     @Override
@@ -840,7 +1126,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             checkKey(key);
         }
  
-        RPromise<Void> result = new RedissonPromise<Void>();
+        RPromise<Void> result = new RedissonPromise<>();
         AtomicInteger counter = new AtomicInteger();
         try {
             Iterator<? extends K> iter = keys.iterator();
@@ -877,7 +1163,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             }
             
             if (!res) {
-                RPromise<V> promise = new RedissonPromise<V>();
+                RPromise<V> promise = new RedissonPromise<>();
                 promise.onComplete((r, ex) -> {
                     if (ex != null) {
                         result.tryFailure(ex);
@@ -916,7 +1202,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     
     private void loadValue(RPromise<Void> result, AtomicInteger counter, Iterator<? extends K> iter,
                                 K k, Map<K, V> loadedEntires) {
-        RPromise<V> promise = new RedissonPromise<V>();
+        RPromise<V> promise = new RedissonPromise<>();
         promise.onComplete((res, e) -> {
             if (e != null) {
                 result.tryFailure(e);
@@ -955,23 +1241,17 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, value);
-            }
-        };
-        return mapWriterFuture(future, listener);
+        return mapWriterFuture(future, new MapWriterTask.Add(key, value));
     }
 
     protected RFuture<V> putOperationAsync(K key, V value) {
-        return commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_MAP_VALUE,
+        String name = getName(key);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_MAP_VALUE,
                 "local v = redis.call('hget', KEYS[1], ARGV[1]); "
                 + "redis.call('hset', KEYS[1], ARGV[1], ARGV[2]); "
                 + "return v",
-                Collections.<Object>singletonList(getName(key)), encodeMapKey(key), encodeMapValue(value));
+                Collections.singletonList(name), encodeMapKey(key), encodeMapValue(value));
     }
-
 
     @Override
     public RFuture<V> removeAsync(K key) {
@@ -982,21 +1262,16 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
-            @Override
-            public void execute() {
-                options.getWriter().delete(key);
-            }
-        };
-        return mapWriterFuture(future, listener);
+        return mapWriterFuture(future, new MapWriterTask.Remove(key));
     }
 
     protected RFuture<V> removeOperationAsync(K key) {
-        return commandExecutor.evalWriteAsync(getName(key), codec, RedisCommands.EVAL_MAP_VALUE,
+        String name = getName(key);
+        return commandExecutor.evalWriteAsync(name, codec, RedisCommands.EVAL_MAP_VALUE,
                 "local v = redis.call('hget', KEYS[1], ARGV[1]); "
                 + "redis.call('hdel', KEYS[1], ARGV[1]); "
                 + "return v",
-                Collections.<Object>singletonList(getName(key)), encodeMapKey(key));
+                Collections.singletonList(name), encodeMapKey(key));
     }
 
     @Override
@@ -1009,17 +1284,12 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
         
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            public void execute() {
-                options.getWriter().write(key, value);
-            }
-        };
-        return mapWriterFuture(future, listener);
+        return mapWriterFuture(future, new MapWriterTask.Add(key, value));
     }
 
     protected RFuture<Boolean> fastPutOperationAsync(K key, V value) {
-        return commandExecutor.writeAsync(getName(key), codec, RedisCommands.HSET, getName(key), encodeMapKey(key), encodeMapValue(value));
+        String name = getName(key);
+        return commandExecutor.writeAsync(name, codec, RedisCommands.HSET, name, encodeMapKey(key), encodeMapValue(value));
     }
 
     @Override
@@ -1042,7 +1312,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
         }
 
         RFuture<List<Long>> future = fastRemoveOperationBatchAsync(keys);            
-        RPromise<Long> result = new RedissonPromise<Long>();
+        RPromise<Long> result = new RedissonPromise<>();
         future.onComplete((res, e) -> {
             if (e != null) {
                 result.tryFailure(e);
@@ -1064,20 +1334,12 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             if (options.getWriteMode() == WriteMode.WRITE_BEHIND) {
                 result.trySuccess((long) deletedKeys.size());
                 
-                MapWriterTask<List<Long>> listener = new MapWriterTask<List<Long>>() {
-                    @Override
-                    public void execute() {
-                        options.getWriter().deleteAll(deletedKeys);
-                    }
-                };
-                future.onComplete(new MapWriteBehindListener<List<Long>>(commandExecutor, listener, writeBehindCurrentThreads, writeBehindTasks, options.getWriteBehindThreads()));
+                MapWriterTask.Remove task = new MapWriterTask.Remove(deletedKeys);
+                writeBehindTask.addTask(task);
             } else {
-                commandExecutor.getConnectionManager().getExecutor().execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        options.getWriter().deleteAll(deletedKeys);
-                        result.trySuccess((long) deletedKeys.size());
-                    }
+                commandExecutor.getConnectionManager().getExecutor().execute(() -> {
+                    options.getWriter().delete(deletedKeys);
+                    result.trySuccess((long) deletedKeys.size());
                 });
             }
         });
@@ -1085,7 +1347,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     }
 
     protected RFuture<List<Long>> fastRemoveOperationBatchAsync(K... keys) {
-        List<Object> args = new ArrayList<Object>(keys.length);
+        List<Object> args = new ArrayList<>(keys.length);
         for (K key : keys) {
             args.add(encodeMapKey(key));
         }
@@ -1097,13 +1359,13 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
                         + "table.insert(result, val); "
                       + "end;"
                       + "return result;",
-                        Arrays.<Object>asList(getName()), 
+                        Arrays.asList(getName()), 
                         args.toArray());
         return future;
     }
 
     protected RFuture<Long> fastRemoveOperationAsync(K... keys) {
-        List<Object> args = new ArrayList<Object>(keys.length + 1);
+        List<Object> args = new ArrayList<>(keys.length + 1);
         args.add(getName());
         for (K key : keys) {
             args.add(encodeMapKey(key));
@@ -1147,21 +1409,20 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
             return future;
         }
 
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
+        return mapWriterFuture(future, new MapWriterTask.Add() {
             @Override
-            public void execute() {
-                options.getWriter().write(key, future.getNow());
+            public Map<K, V> getMap() {
+                return Collections.singletonMap(key, future.getNow());
             }
-        };
-        
-        return mapWriterFuture(future, listener);
+        });
     }
 
     protected RFuture<V> addAndGetOperationAsync(K key, Number value) {
         ByteBuf keyState = encodeMapKey(key);
-        RFuture<V> future = commandExecutor.writeAsync(getName(key), StringCodec.INSTANCE,
-                new RedisCommand<Object>("HINCRBYFLOAT", new NumberConvertor(value.getClass())),
-                getName(key), keyState, new BigDecimal(value.toString()).toPlainString());
+        String name = getName(key);
+        RFuture<V> future = commandExecutor.writeAsync(name, StringCodec.INSTANCE,
+                new RedisCommand<>("HINCRBYFLOAT", new NumberConvertor(value.getClass())),
+                name, keyState, new BigDecimal(value.toString()).toPlainString());
         return future;
     }
 
@@ -1312,7 +1573,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
     }
 
     protected Iterator<Map.Entry<K, V>> entryIterator(String pattern, int count) {
-        return new RedissonMapIterator<Map.Entry<K, V>>(RedissonMap.this, pattern, count);
+        return new RedissonMapIterator<>(RedissonMap.this, pattern, count);
     }
 
     private void loadValue(K key, RPromise<V> result, boolean replaceValue) {
@@ -1365,7 +1626,7 @@ public class RedissonMap<K, V> extends RedissonExpirable implements RMap<K, V> {
                     return;
                 }
                     
-                externalPutAsync(key, value).onComplete((res, e) -> {
+                putOperationAsync(key, value).onComplete((res, e) -> {
                     if (e != null) {
                         lock.unlockAsync(threadId);
                         result.tryFailure(e);

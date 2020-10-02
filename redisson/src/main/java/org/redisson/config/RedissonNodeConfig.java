@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.redisson.api.RedissonNodeInitializer;
+import org.springframework.beans.factory.BeanFactory;
 
 /**
  * Redisson Node configuration
@@ -32,6 +33,7 @@ public class RedissonNodeConfig extends Config {
     
     private int mapReduceWorkers = 0;
     private RedissonNodeInitializer redissonNodeInitializer;
+    private BeanFactory beanFactory;
     private Map<String, Integer> executorServiceWorkers = new HashMap<String, Integer>();
     
     public RedissonNodeConfig() {
@@ -46,6 +48,8 @@ public class RedissonNodeConfig extends Config {
         super(oldConf);
         this.executorServiceWorkers = new HashMap<String, Integer>(oldConf.executorServiceWorkers);
         this.redissonNodeInitializer = oldConf.redissonNodeInitializer;
+        this.mapReduceWorkers = oldConf.mapReduceWorkers;
+        this.beanFactory = oldConf.beanFactory;
     }
     
     /**
@@ -97,6 +101,19 @@ public class RedissonNodeConfig extends Config {
         return redissonNodeInitializer;
     }
 
+    public BeanFactory getBeanFactory() {
+        return beanFactory;
+    }
+
+    /**
+     * Defines Spring Bean Factory instance to execute tasks with Spring's '@Autowired', 
+     * '@Value' or JSR-330's '@Inject' annotation.
+     * 
+     * @param beanFactory - Spring BeanFactory instance
+     */
+    public void setBeanFactory(BeanFactory beanFactory) {
+        this.beanFactory = beanFactory;
+    }
 
     /**
      * Read config object stored in JSON format from <code>File</code>

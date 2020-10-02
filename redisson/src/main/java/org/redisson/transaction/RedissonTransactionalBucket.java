@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,7 @@
  */
 package org.redisson.transaction;
 
-import java.util.Date;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import io.netty.buffer.ByteBuf;
 import org.redisson.RedissonBucket;
 import org.redisson.api.RFuture;
 import org.redisson.api.RLock;
@@ -31,13 +27,12 @@ import org.redisson.transaction.operation.DeleteOperation;
 import org.redisson.transaction.operation.TouchOperation;
 import org.redisson.transaction.operation.TransactionalOperation;
 import org.redisson.transaction.operation.UnlinkOperation;
-import org.redisson.transaction.operation.bucket.BucketCompareAndSetOperation;
-import org.redisson.transaction.operation.bucket.BucketGetAndDeleteOperation;
-import org.redisson.transaction.operation.bucket.BucketGetAndSetOperation;
-import org.redisson.transaction.operation.bucket.BucketSetOperation;
-import org.redisson.transaction.operation.bucket.BucketTrySetOperation;
+import org.redisson.transaction.operation.bucket.*;
 
-import io.netty.buffer.ByteBuf;
+import java.util.Date;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 
@@ -196,11 +191,12 @@ public class RedissonTransactionalBucket<V> extends RedissonBucket<V> {
     public RFuture<Boolean> deleteAsync() {
         checkState();
         RPromise<Boolean> result = new RedissonPromise<Boolean>();
+        long threadId = Thread.currentThread().getId();
         executeLocked(result, new Runnable() {
             @Override
             public void run() {
                 if (state != null) {
-                    operations.add(new DeleteOperation(getName(), getLockName(), transactionId));
+                    operations.add(new DeleteOperation(getName(), getLockName(), transactionId, threadId));
                     if (state == NULL) {
                         result.trySuccess(false);
                     } else {
@@ -216,7 +212,7 @@ public class RedissonTransactionalBucket<V> extends RedissonBucket<V> {
                         return;
                     }
                     
-                    operations.add(new DeleteOperation(getName(), getLockName(), transactionId));
+                    operations.add(new DeleteOperation(getName(), getLockName(), transactionId, threadId));
                     state = NULL;
                     result.trySuccess(res);
                 });
@@ -288,8 +284,17 @@ public class RedissonTransactionalBucket<V> extends RedissonBucket<V> {
     }
     
     @Override
+    public RFuture<V> getAndSetAsync(V value, long timeToLive, TimeUnit timeUnit) {
+        return getAndSet(value, new BucketGetAndSetOperation<V>(getName(), getLockName(), getCodec(), value, timeToLive, timeUnit, transactionId));
+    }
+    
+    @Override
+    public RFuture<V> getAndSetAsync(V value) {
+        return getAndSet(value, new BucketGetAndSetOperation<V>(getName(), getLockName(), getCodec(), value, transactionId));
+    }
+    
     @SuppressWarnings("unchecked")
-    public RFuture<V> getAndSetAsync(V newValue) {
+    private RFuture<V> getAndSet(V newValue, TransactionalOperation operation) {
         checkState();
         RPromise<V> result = new RedissonPromise<V>();
         executeLocked(result, new Runnable() {
@@ -302,7 +307,7 @@ public class RedissonTransactionalBucket<V> extends RedissonBucket<V> {
                     } else {
                         prevValue = state;
                     }
-                    operations.add(new BucketGetAndSetOperation<V>(getName(), getLockName(), getCodec(), newValue, transactionId));
+                    operations.add(operation);
                     if (newValue == null) {
                         state = NULL;
                     } else {
@@ -323,7 +328,7 @@ public class RedissonTransactionalBucket<V> extends RedissonBucket<V> {
                     } else {
                         state = newValue;
                     }
-                    operations.add(new BucketGetAndSetOperation<V>(getName(), getLockName(), getCodec(), newValue, transactionId));
+                    operations.add(operation);
                     result.trySuccess(res);
                 });
             }

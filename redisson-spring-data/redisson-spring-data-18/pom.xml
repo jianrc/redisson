@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.redisson</groupId>
         <artifactId>redisson-spring-data</artifactId>
-        <version>3.10.4-SNAPSHOT</version>
+        <version>3.13.6-SNAPSHOT</version>
         <relativePath>../</relativePath>
     </parent>
 
@@ -17,12 +17,25 @@
         <dependency>
             <groupId>org.springframework.data</groupId>
             <artifactId>spring-data-redis</artifactId>
-            <version>1.8.14.RELEASE</version>
+            <version>1.8.23.RELEASE</version>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <archive>  
+                        <manifestEntries>
+                            <Build-Time>${maven.build.timestamp}</Build-Time>
+                            <Automatic-Module-Name>redisson.spring.data18</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive> 
+                </configuration>
+            </plugin>
+
             <plugin>
                 <groupId>com.mycila</groupId>
                 <artifactId>license-maven-plugin</artifactId>

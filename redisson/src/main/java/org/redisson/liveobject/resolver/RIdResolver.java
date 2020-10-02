@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package org.redisson.liveobject.resolver;
 
-import org.redisson.api.RedissonClient;
 import org.redisson.api.annotation.RId;
+import org.redisson.command.CommandAsyncExecutor;
 
 /**
  *
@@ -32,9 +32,9 @@ public interface RIdResolver<V> {
      * @param cls the class of the LiveObject.
      * @param annotation the RId annotation used in the class.
      * @param idFieldName field id
-     * @param redisson instance
+     * @param commandAsyncExecutor instance
      * @return resolved RId field value.
      */
-    V resolve(Class<?> cls, RId annotation, String idFieldName, RedissonClient redisson);
+    V resolve(Class<?> cls, RId annotation, String idFieldName, CommandAsyncExecutor commandAsyncExecutor);
 
 }

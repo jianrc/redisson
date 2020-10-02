@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -106,27 +106,27 @@ public class RedissonMapRx<K, V> {
     }
 
     public RPermitExpirableSemaphoreRx getPermitExpirableSemaphore(K key) {
-        String name = ((RedissonMap<K, V>) instance).getLockName(key, "permitexpirablesemaphore");
+        String name = ((RedissonMap<K, V>) instance).getLockByMapKey(key, "permitexpirablesemaphore");
         return redisson.getPermitExpirableSemaphore(name);
     }
 
     public RSemaphoreRx getSemaphore(K key) {
-        String name = ((RedissonMap<K, V>) instance).getLockName(key, "semaphore");
+        String name = ((RedissonMap<K, V>) instance).getLockByMapKey(key, "semaphore");
         return redisson.getSemaphore(name);
     }
     
     public RLockRx getFairLock(K key) {
-        String name = ((RedissonMap<K, V>) instance).getLockName(key, "fairlock");
+        String name = ((RedissonMap<K, V>) instance).getLockByMapKey(key, "fairlock");
         return redisson.getFairLock(name);
     }
     
     public RReadWriteLockRx getReadWriteLock(K key) {
-        String name = ((RedissonMap<K, V>) instance).getLockName(key, "rw_lock");
+        String name = ((RedissonMap<K, V>) instance).getLockByMapKey(key, "rw_lock");
         return redisson.getReadWriteLock(name);
     }
     
     public RLockRx getLock(K key) {
-        String name = ((RedissonMap<K, V>) instance).getLockName(key, "lock");
+        String name = ((RedissonMap<K, V>) instance).getLockByMapKey(key, "lock");
         return redisson.getLock(name);
     }
 

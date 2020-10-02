@@ -528,9 +528,9 @@ public class RedissonSetTest extends BaseTest {
         .setLoadBalancer(new RandomLoadBalancer())
         .addNodeAddress(process.getNodes().stream().findAny().get().getRedisServerAddressAndPort());
         RedissonClient redisson = Redisson.create(config);
-        
+
         int size = 10000;
-        RSet<String> set = redisson.getSet("test");
+        RSet<String> set = redisson.getSet("{test");
         for (int i = 0; i < size; i++) {
             set.add("" + i);
         }
@@ -541,7 +541,7 @@ public class RedissonSetTest extends BaseTest {
         }
         
         assertThat(keys).hasSize(size);
-        
+
         redisson.shutdown();
         process.shutdown();
     }
@@ -824,7 +824,7 @@ public class RedissonSetTest extends BaseTest {
 
         Assert.assertTrue(list.removeAll(Arrays.asList(4)));
 
-        assertThat(list).containsExactly(1, 5);
+        assertThat(list).containsExactlyInAnyOrder(1, 5);
 
         Assert.assertTrue(list.removeAll(Arrays.asList(1, 5, 1, 5)));
 

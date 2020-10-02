@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,11 +87,17 @@ public class RedissonDelayedQueue<V> extends RedissonExpirable implements RDelay
         this.queueTransferService = queueTransferService;
     }
 
+    @Override
     public void offer(V e, long delay, TimeUnit timeUnit) {
         get(offerAsync(e, delay, timeUnit));
     }
     
+    @Override
     public RFuture<Void> offerAsync(V e, long delay, TimeUnit timeUnit) {
+        if (delay < 0) {
+            throw new IllegalArgumentException("Delay can't be negative");
+        }
+        
         long delayInMs = timeUnit.toMillis(delay);
         long timeout = System.currentTimeMillis() + delayInMs;
      
@@ -250,6 +256,11 @@ public class RedissonDelayedQueue<V> extends RedissonExpirable implements RDelay
     }
 
     @Override
+    public List<V> poll(int limit) {
+        return get(pollAsync(limit));
+    }
+
+    @Override
     public RFuture<List<V>> readAllAsync() {
         return commandExecutor.evalReadAsync(getName(), codec, RedisCommands.EVAL_LIST,
                 "local result = {}; " +
@@ -259,7 +270,25 @@ public class RedissonDelayedQueue<V> extends RedissonExpirable implements RDelay
                    + "table.insert(result, value);"
               + "end; "
               + "return result; ",
-           Collections.<Object>singletonList(queueName));
+           Collections.singletonList(queueName));
+    }
+
+    @Override
+    public RFuture<List<V>> pollAsync(int limit) {
+        return commandExecutor.evalWriteAsync(getName(), codec, RedisCommands.EVAL_LIST,
+                   "local result = {};"
+                 + "for i = 1, ARGV[1], 1 do " +
+                       "local v = redis.call('lpop', KEYS[1]);" +
+                       "if v ~= false then " +
+                           "redis.call('zrem', KEYS[2], v); " +
+                           "local randomId, value = struct.unpack('dLc0', v);" +
+                           "table.insert(result, value);" +
+                       "else " +
+                           "return result;" +
+                       "end;" +
+                   "end; " +
+                   "return result;",
+                Arrays.asList(queueName, timeoutSetName), limit);
     }
 
     @Override
@@ -396,7 +425,7 @@ public class RedissonDelayedQueue<V> extends RedissonExpirable implements RDelay
     
     @Override
     public RFuture<Boolean> deleteAsync() {
-        return commandExecutor.writeAsync(getName(), RedisCommands.DEL_OBJECTS, queueName, timeoutSetName);
+        return deleteAsync(queueName, timeoutSetName);
     }
     
     @Override
@@ -404,33 +433,21 @@ public class RedissonDelayedQueue<V> extends RedissonExpirable implements RDelay
         List<Object> keys = Arrays.<Object>asList(queueName, timeoutSetName);
         return super.sizeInMemoryAsync(keys);
     }
-    
+
     @Override
     public RFuture<Boolean> expireAsync(long timeToLive, TimeUnit timeUnit) {
-        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('pexpire', KEYS[1], ARGV[1]); " +
-                        "return redis.call('pexpire', KEYS[2], ARGV[1]); ",
-                Arrays.<Object>asList(queueName, timeoutSetName),
-                timeUnit.toMillis(timeToLive));
+        return expireAsync(timeToLive, timeUnit, queueName, timeoutSetName);
     }
 
     @Override
     public RFuture<Boolean> expireAtAsync(long timestamp) {
-        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('pexpireat', KEYS[1], ARGV[1]); " +
-                        "return redis.call('pexpireat', KEYS[2], ARGV[1]); ",
-                Arrays.<Object>asList(queueName, timeoutSetName),
-                timestamp);
+        return expireAtAsync(timestamp, queueName, timeoutSetName);
     }
 
     @Override
     public RFuture<Boolean> clearExpireAsync() {
-        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
-                        "redis.call('persist', KEYS[1]); " +
-                        "return redis.call('persist', KEYS[2]); ",
-                Arrays.<Object>asList(queueName, timeoutSetName));
+        return clearExpireAsync(queueName, timeoutSetName);
     }
-
 
     @Override
     public RFuture<V> peekAsync() {

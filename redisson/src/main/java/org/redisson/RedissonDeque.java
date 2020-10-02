@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,9 @@
  */
 package org.redisson;
 
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 
 import org.redisson.api.RDeque;
@@ -45,6 +47,26 @@ public class RedissonDeque<V> extends RedissonQueue<V> implements RDeque<V> {
 
     public RedissonDeque(Codec codec, CommandAsyncExecutor commandExecutor, String name, RedissonClient redisson) {
         super(codec, commandExecutor, name, redisson);
+    }
+
+    @Override
+    public int addFirstIfExists(V... elements) {
+        return get(addFirstIfExistsAsync(elements));
+    }
+
+    @Override
+    public int addLastIfExists(V... elements) {
+        return get(addLastIfExistsAsync(elements));
+    }
+
+    @Override
+    public RFuture<Integer> addFirstIfExistsAsync(V... elements) {
+        return commandExecutor.writeAsync(getName(), codec, RedisCommands.LPUSHX, getName(), encode(elements));
+    }
+
+    @Override
+    public RFuture<Integer> addLastIfExistsAsync(V... elements) {
+        return commandExecutor.writeAsync(getName(), codec, RedisCommands.RPUSHX, getName(), encode(elements));
     }
 
     @Override
@@ -169,10 +191,40 @@ public class RedissonDeque<V> extends RedissonQueue<V> implements RDeque<V> {
     }
 
     @Override
+    public RFuture<List<V>> pollFirstAsync(int limit) {
+        return pollAsync(limit);
+    }
+
+    @Override
+    public List<V> pollFirst(int limit) {
+        return poll(limit);
+    }
+
+    @Override
     public RFuture<V> pollLastAsync() {
         return commandExecutor.writeAsync(getName(), codec, RedisCommands.RPOP, getName());
     }
 
+    @Override
+    public List<V> pollLast(int limit) {
+        return get(pollLastAsync(limit));
+    }
+
+    @Override
+    public RFuture<List<V>> pollLastAsync(int limit) {
+        return commandExecutor.evalWriteAsync(getName(), codec, RedisCommands.EVAL_LIST,
+                   "local result = {};"
+                 + "for i = 1, ARGV[1], 1 do " +
+                       "local value = redis.call('rpop', KEYS[1]);" +
+                       "if value ~= false then " +
+                           "table.insert(result, value);" +
+                       "else " +
+                           "return result;" +
+                       "end;" +
+                   "end; " +
+                   "return result;",
+                Collections.singletonList(getName()), limit);
+    }
 
     @Override
     public V pollLast() {

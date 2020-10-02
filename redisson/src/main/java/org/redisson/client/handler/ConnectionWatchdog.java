@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -105,7 +105,7 @@ public class ConnectionWatchdog extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        log.debug("reconnecting {} to {} ", connection, connection.getRedisClient().getAddr(), connection);
+        log.debug("reconnecting {} to {} ", connection, connection.getRedisClient().getAddr());
 
         try {
             bootstrap.connect(connection.getRedisClient().getAddr()).addListener(new ChannelFutureListener() {
@@ -177,14 +177,12 @@ public class ConnectionWatchdog extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        log.debug("blocking queue sent " + connection);
         ChannelFuture future = connection.send(currentCommand);
-        final CommandData<?, ?> cd = currentCommand;
         future.addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
                 if (!future.isSuccess()) {
-                    log.error("Can't reconnect blocking queue to new connection. {}", cd);
+                    log.error("Can't reconnect blocking queue by command: {} using connection: {}", currentCommand, connection);
                 }
             }
         });

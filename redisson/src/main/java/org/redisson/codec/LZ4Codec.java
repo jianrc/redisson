@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ public class LZ4Codec extends BaseCodec {
     private final Codec innerCodec;
 
     public LZ4Codec() {
-        this(new FstCodec());
+        this(new MarshallingCodec());
     }
 
     public LZ4Codec(Codec innerCodec) {
@@ -58,10 +58,10 @@ public class LZ4Codec extends BaseCodec {
     }
     
     public LZ4Codec(ClassLoader classLoader) {
-        this(new FstCodec(classLoader));
+        this(new MarshallingCodec(classLoader));
     }
 
-    public LZ4Codec(ClassLoader classLoader, LZ4Codec codec) {
+    public LZ4Codec(ClassLoader classLoader, LZ4Codec codec) throws ReflectiveOperationException {
         this(copy(classLoader, codec.innerCodec));
     }
     

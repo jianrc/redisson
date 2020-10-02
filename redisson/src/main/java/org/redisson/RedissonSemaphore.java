@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.redisson.api.RFuture;
 import org.redisson.api.RSemaphore;
+import org.redisson.client.codec.IntegerCodec;
 import org.redisson.client.codec.LongCodec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.client.protocol.RedisCommands;
@@ -49,10 +50,10 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
 
     final CommandAsyncExecutor commandExecutor;
 
-    public RedissonSemaphore(CommandAsyncExecutor commandExecutor, String name, SemaphorePubSub semaphorePubSub) {
+    public RedissonSemaphore(CommandAsyncExecutor commandExecutor, String name) {
         super(commandExecutor, name);
         this.commandExecutor = commandExecutor;
-        this.semaphorePubSub = semaphorePubSub;
+        this.semaphorePubSub = commandExecutor.getConnectionManager().getSubscribeService().getSemaphorePubSub();
     }
 
     String getChannelName() {
@@ -78,14 +79,14 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
         }
 
         RFuture<RedissonLockEntry> future = subscribe();
-        commandExecutor.syncSubscription(future);
+        commandExecutor.syncSubscriptionInterrupted(future);
         try {
             while (true) {
                 if (tryAcquire(permits)) {
                     return;
                 }
 
-                getEntry().getLatch().acquire(permits);
+                future.getNow().getLatch().acquire(permits);
             }
         } finally {
             unsubscribe(future);
@@ -168,7 +169,7 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
 
             // waiting for message
             long current = System.currentTimeMillis();
-            RedissonLockEntry entry = getEntry();
+            RedissonLockEntry entry = subscribeFuture.getNow();
             if (entry.getLatch().tryAcquire()) {
                 tryAcquireAsync(time, permits, subscribeFuture, result);
             } else {
@@ -228,7 +229,7 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
                 return;
             }
             
-            RedissonLockEntry entry = getEntry();
+            RedissonLockEntry entry = subscribeFuture.getNow();
             if (entry.getLatch().tryAcquire(permits)) {
                 acquireAsync(permits, subscribeFuture, result);
             } else {
@@ -294,7 +295,7 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
 
         current = System.currentTimeMillis();
         RFuture<RedissonLockEntry> future = subscribe();
-        if (!await(future, time, TimeUnit.MILLISECONDS)) {
+        if (!future.await(time, TimeUnit.MILLISECONDS)) {
             return false;
         }
 
@@ -318,7 +319,7 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
                 // waiting for message
                 current = System.currentTimeMillis();
 
-                getEntry().getLatch().tryAcquire(permits, time, TimeUnit.MILLISECONDS);
+                future.getNow().getLatch().tryAcquire(permits, time, TimeUnit.MILLISECONDS);
 
                 time -= System.currentTimeMillis() - current;
                 if (time <= 0) {
@@ -398,17 +399,12 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
         return result;
     }
 
-    
-    private RedissonLockEntry getEntry() {
-        return semaphorePubSub.getEntry(getName());
-    }
-
     private RFuture<RedissonLockEntry> subscribe() {
-        return semaphorePubSub.subscribe(getName(), getChannelName(), commandExecutor.getConnectionManager().getSubscribeService());
+        return semaphorePubSub.subscribe(getName(), getChannelName());
     }
 
     private void unsubscribe(RFuture<RedissonLockEntry> future) {
-        semaphorePubSub.unsubscribe(future.getNow(), getName(), getChannelName(), commandExecutor.getConnectionManager().getSubscribeService());
+        semaphorePubSub.unsubscribe(future.getNow(), getName(), getChannelName());
     }
 
     @Override
@@ -446,26 +442,31 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
             Arrays.<Object>asList(getName(), getChannelName()), permits);
     }
 
-
     @Override
     public int drainPermits() {
-        RFuture<Long> future = commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_LONG,
+        return get(drainPermitsAsync());
+    }
+
+    @Override
+    public RFuture<Integer> drainPermitsAsync() {
+        return commandExecutor.evalWriteAsync(getName(), IntegerCodec.INSTANCE, RedisCommands.EVAL_LONG,
                 "local value = redis.call('get', KEYS[1]); " +
                 "if (value == false or value == 0) then " +
                     "return 0; " +
                 "end; " +
                 "redis.call('set', KEYS[1], 0); " +
                 "return value;",
-                Collections.<Object>singletonList(getName()));
-        Long res = get(future);
-        return res.intValue();
+                Collections.singletonList(getName()));
     }
 
     @Override
     public int availablePermits() {
-        RFuture<Long> future = commandExecutor.writeAsync(getName(), LongCodec.INSTANCE, RedisCommands.GET_LONG, getName());
-        Long res = get(future);
-        return res.intValue();
+        return get(availablePermitsAsync());
+    }
+
+    @Override
+    public RFuture<Integer> availablePermitsAsync() {
+        return commandExecutor.writeAsync(getName(), LongCodec.INSTANCE, RedisCommands.GET_INTEGER, getName());
     }
 
     @Override
@@ -487,22 +488,20 @@ public class RedissonSemaphore extends RedissonExpirable implements RSemaphore {
     }
 
     @Override
-    public void reducePermits(int permits) {
-        get(reducePermitsAsync(permits));
+    public void addPermits(int permits) {
+        get(addPermitsAsync(permits));
     }
-    
+
     @Override
-    public RFuture<Void> reducePermitsAsync(int permits) {
-        if (permits < 0) {
-            throw new IllegalArgumentException();
-        }
+    public RFuture<Void> addPermitsAsync(int permits) {
         return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_VOID,
                 "local value = redis.call('get', KEYS[1]); " +
                 "if (value == false) then "
                   + "value = 0;"
               + "end;"
-              + "redis.call('set', KEYS[1], value - ARGV[1]); ",
+              + "redis.call('set', KEYS[1], value + ARGV[1]); ",
                 Arrays.<Object>asList(getName(), getChannelName()), permits);
     }
-    
+
+
 }

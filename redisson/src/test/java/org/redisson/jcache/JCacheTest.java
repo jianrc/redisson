@@ -1,5 +1,6 @@
 package org.redisson.jcache;
 
+import static java.util.concurrent.TimeUnit.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
@@ -34,7 +35,10 @@ import org.redisson.BaseTest;
 import org.redisson.RedisRunner;
 import org.redisson.RedisRunner.FailedToStartRedisException;
 import org.redisson.RedisRunner.RedisProcess;
-import org.redisson.client.codec.JsonJacksonMapCodec;
+import org.redisson.api.CacheAsync;
+import org.redisson.api.CacheReactive;
+import org.redisson.api.CacheRx;
+import org.redisson.codec.TypedJsonJacksonCodec;
 import org.redisson.config.Config;
 import org.redisson.jcache.configuration.RedissonConfiguration;
 
@@ -43,6 +47,165 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 public class JCacheTest extends BaseTest {
 
+    @Test
+    public void testCreatedExpiryPolicy() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+
+        MutableConfiguration c = new MutableConfiguration();
+        c.setExpiryPolicyFactory(CreatedExpiryPolicy.factoryOf(new Duration(MILLISECONDS, 500)));
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg, c);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+
+        cache.put("1", "2");
+        Thread.sleep(500);
+        assertThat(cache.get("1")).isNull();
+        cache.put("1", "3");
+        assertThat(cache.get("1")).isEqualTo("3");
+        Thread.sleep(500);
+        assertThat(cache.get("1")).isNull();
+
+        cache.put("1", "4");
+        assertThat(cache.get("1")).isEqualTo("4");
+        Thread.sleep(100);
+        cache.put("1", "5");
+        assertThat(cache.get("1")).isEqualTo("5");
+
+        cache.close();
+        runner.stop();
+    }
+
+    @Test
+    public void testClear() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+
+        cache.put("1", "2");
+        cache.clear();
+        assertThat(cache.get("1")).isNull();
+
+        cache.close();
+        runner.stop();
+    }
+
+    @Test
+    public void testAsync() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+        
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+        
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+
+        CacheAsync<String, String> async = cache.unwrap(CacheAsync.class);
+        async.putAsync("1", "2").get();
+        assertThat(async.getAsync("1").get()).isEqualTo("2");
+        
+        cache.close();
+        runner.stop();
+    }
+    
+    @Test
+    public void testReactive() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+        
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+        
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+
+        CacheReactive<String, String> reactive = cache.unwrap(CacheReactive.class);
+        reactive.put("1", "2").block();
+        assertThat(reactive.get("1").block()).isEqualTo("2");
+        
+        cache.close();
+        runner.stop();
+    }
+    
+    @Test
+    public void testRx() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+        
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+        
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+
+        CacheRx<String, String> rx = cache.unwrap(CacheRx.class);
+        rx.put("1", "2").blockingAwait();
+        assertThat(rx.get("1").blockingGet()).isEqualTo("2");
+        
+        cache.close();
+        runner.stop();
+    }
+    
+    @Test
+    public void testPutAll() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+        
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+        
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+        
+        Map<String, String> map = new HashMap<>();
+        for (int i = 0; i < 10000; i++) {
+            map.put("" + i, "" + i);
+        }
+        
+        long start = System.currentTimeMillis();
+        cache.putAll(map);
+        System.out.println(System.currentTimeMillis() - start);
+        
+        for (int i = 0; i < 10000; i++) {
+            assertThat(cache.containsKey("" + i)).isTrue();
+        }
+        
+        cache.close();
+        runner.stop();
+    }
+    
     @Test
     public void testRemoveAll() throws Exception {
         RedisProcess runner = new RedisRunner()
@@ -69,6 +232,34 @@ public class JCacheTest extends BaseTest {
         assertThat(cache.containsKey("3")).isFalse();
         assertThat(cache.containsKey("4")).isFalse();
         assertThat(cache.containsKey("5")).isFalse();
+        
+        cache.close();
+        runner.stop();
+    }
+
+    @Test
+    public void testGetAllHighVolume() throws Exception {
+        RedisProcess runner = new RedisRunner()
+                .nosave()
+                .randomDir()
+                .port(6311)
+                .run();
+        
+        URL configUrl = getClass().getResource("redisson-jcache.json");
+        Config cfg = Config.fromJSON(configUrl);
+        
+        Configuration<String, String> config = RedissonConfiguration.fromConfig(cfg);
+        Cache<String, String> cache = Caching.getCachingProvider().getCacheManager()
+                .createCache("test", config);
+
+        Map<String, String> m = new HashMap<>();
+        for (int i = 0; i < 10000; i++) {
+            m.put("" + i, "" + i);
+        }
+        cache.putAll(m);
+        
+        Map<String, String> entries = cache.getAll(m.keySet());
+        assertThat(entries).isEqualTo(m);
         
         cache.close();
         runner.stop();
@@ -114,7 +305,7 @@ public class JCacheTest extends BaseTest {
         Config cfg = Config.fromJSON(configUrl);
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
-        cfg.setCodec(new JsonJacksonMapCodec(String.class, LocalDateTime.class, objectMapper));
+        cfg.setCodec(new TypedJsonJacksonCodec(String.class, LocalDateTime.class, objectMapper));
         
         Configuration<String, LocalDateTime> config = RedissonConfiguration.fromConfig(cfg);
         Cache<String, LocalDateTime> cache = Caching.getCachingProvider().getCacheManager()

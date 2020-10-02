@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,17 +51,17 @@ public class RedissonTransactionalMapCache<K, V> extends RedissonMapCache<K, V> 
     
     public RedissonTransactionalMapCache(CommandAsyncExecutor commandExecutor, String name, 
             List<TransactionalOperation> operations, long timeout, AtomicBoolean executed, String transactionId) {
-        super(null, commandExecutor, name, null, null);
+        super(null, commandExecutor, name, null, null, null);
         this.executed = executed;
-        RedissonMapCache<K, V> innerMap = new RedissonMapCache<K, V>(null, commandExecutor, name, null, null);
+        RedissonMapCache<K, V> innerMap = new RedissonMapCache<K, V>(null, commandExecutor, name, null, null, null);
         this.transactionalMap = new BaseTransactionalMapCache<K, V>(commandExecutor, timeout, operations, innerMap, transactionId);
     }
 
     public RedissonTransactionalMapCache(Codec codec, CommandAsyncExecutor commandExecutor, String name,
             List<TransactionalOperation> operations, long timeout, AtomicBoolean executed, String transactionId) {
-        super(codec, null, commandExecutor, name, null, null);
+        super(codec, null, commandExecutor, name, null, null, null);
         this.executed = executed;
-        RedissonMapCache<K, V> innerMap = new RedissonMapCache<K, V>(codec, null, commandExecutor, name, null, null);
+        RedissonMapCache<K, V> innerMap = new RedissonMapCache<K, V>(codec, null, commandExecutor, name, null, null, null);
         this.transactionalMap = new BaseTransactionalMapCache<K, V>(commandExecutor, timeout, operations, innerMap, transactionId);
     }
     
@@ -129,8 +129,8 @@ public class RedissonTransactionalMapCache<K, V> extends RedissonMapCache<K, V> 
     }
     
     @Override
-    public RFuture<V> putOperationAsync(K key, V value, long ttlTimeout, long maxIdleTimeout, long maxIdleDelta) {
-        return transactionalMap.putOperationAsync(key, value, ttlTimeout, maxIdleTimeout, maxIdleDelta);
+    public RFuture<V> putOperationAsync(K key, V value, long ttlTimeout, long maxIdleTimeout, long maxIdleDelta, long ttlTimeoutDelta) {
+        return transactionalMap.putOperationAsync(key, value, ttlTimeout, maxIdleTimeout, maxIdleDelta, ttlTimeoutDelta);
     }
     
     public RFuture<Boolean> fastPutIfAbsentAsync(final K key, final V value, long ttl, TimeUnit ttlUnit, long maxIdleTime, TimeUnit maxIdleUnit) {

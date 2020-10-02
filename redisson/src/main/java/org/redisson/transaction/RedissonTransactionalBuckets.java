@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,6 @@
  */
 package org.redisson.transaction;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-
 import org.redisson.RedissonBuckets;
 import org.redisson.RedissonKeys;
 import org.redisson.RedissonMultiLock;
@@ -40,10 +25,14 @@ import org.redisson.client.codec.Codec;
 import org.redisson.command.CommandAsyncExecutor;
 import org.redisson.misc.RPromise;
 import org.redisson.misc.RedissonPromise;
-import org.redisson.transaction.operation.DeleteOperation;
 import org.redisson.transaction.operation.TransactionalOperation;
 import org.redisson.transaction.operation.bucket.BucketSetOperation;
 import org.redisson.transaction.operation.bucket.BucketsTrySetOperation;
+
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 
@@ -137,51 +126,53 @@ public class RedissonTransactionalBuckets extends RedissonBuckets {
         return result;
     }
     
-    @Override
-    public RFuture<Long> deleteAsync(String... keys) {
-        checkState();
-        RPromise<Long> result = new RedissonPromise<>();
-        executeLocked(result, new Runnable() {
-            @Override
-            public void run() {
-                AtomicLong counter = new AtomicLong();
-                AtomicLong executions = new AtomicLong(keys.length);
-                for (String key : keys) {
-                    Object st = state.get(key);
-                    if (st != null) {
-                        operations.add(new DeleteOperation(key, getLockName(key), transactionId));
-                        if (st != NULL) {
-                            state.put(key, NULL);
-                            counter.incrementAndGet();
-                        }
-                        if (executions.decrementAndGet() == 0) {
-                            result.trySuccess(counter.get());
-                        }
-                        continue;
-                    }
-                    
-                    RedissonKeys ks = new RedissonKeys(commandExecutor);
-                    ks.countExistsAsync(key).onComplete((res, e) -> {
-                        if (e != null) {
-                            result.tryFailure(e);
-                            return;
-                        }
-                        
-                        if (res > 0) {
-                            operations.add(new DeleteOperation(key, getLockName(key), transactionId));
-                            state.put(key, NULL);
-                            counter.incrementAndGet();
-                        }
-                        
-                        if (executions.decrementAndGet() == 0) {
-                            result.trySuccess(counter.get());
-                        }
-                    });
-                }
-            }
-        }, Arrays.asList(keys));
-        return result;
-    }
+//    Add RKeys.deleteAsync support
+//
+//    public RFuture<Long> deleteAsync(String... keys) {
+//        checkState();
+//        RPromise<Long> result = new RedissonPromise<>();
+//        long threadId = Thread.currentThread().getId();
+//        executeLocked(result, new Runnable() {
+//            @Override
+//            public void run() {
+//                AtomicLong counter = new AtomicLong();
+//                AtomicLong executions = new AtomicLong(keys.length);
+//                for (String key : keys) {
+//                    Object st = state.get(key);
+//                    if (st != null) {
+//                        operations.add(new DeleteOperation(key, getLockName(key), transactionId, threadId));
+//                        if (st != NULL) {
+//                            state.put(key, NULL);
+//                            counter.incrementAndGet();
+//                        }
+//                        if (executions.decrementAndGet() == 0) {
+//                            result.trySuccess(counter.get());
+//                        }
+//                        continue;
+//                    }
+//
+//                    RedissonKeys ks = new RedissonKeys(commandExecutor);
+//                    ks.countExistsAsync(key).onComplete((res, e) -> {
+//                        if (e != null) {
+//                            result.tryFailure(e);
+//                            return;
+//                        }
+//
+//                        if (res > 0) {
+//                            operations.add(new DeleteOperation(key, getLockName(key), transactionId, threadId));
+//                            state.put(key, NULL);
+//                            counter.incrementAndGet();
+//                        }
+//
+//                        if (executions.decrementAndGet() == 0) {
+//                            result.trySuccess(counter.get());
+//                        }
+//                    });
+//                }
+//            }
+//        }, Arrays.asList(keys));
+//        return result;
+//    }
     
     @Override
     public RFuture<Boolean> trySetAsync(Map<String, ?> buckets) {

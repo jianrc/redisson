@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package org.redisson;
 
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.redisson.api.RBlockingDeque;
 import org.redisson.api.RFuture;
@@ -124,9 +125,19 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
     
     @Override
     public V takeLastAndOfferFirstTo(String queueName) throws InterruptedException {
-        return get(takeLastAndOfferFirstToAsync(queueName));
+        return commandExecutor.getInterrupted(takeLastAndOfferFirstToAsync(queueName));
     }
-    
+
+    @Override
+    public int subscribeOnElements(Consumer<V> consumer) {
+        return blockingQueue.subscribeOnElements(consumer);
+    }
+
+    @Override
+    public void unsubscribe(int id) {
+        blockingQueue.unsubscribe(id);
+    }
+
     @Override
     public RFuture<V> takeLastAndOfferFirstToAsync(String queueName) {
         return pollLastAndOfferFirstToAsync(queueName, 0, TimeUnit.SECONDS);
@@ -191,7 +202,7 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
 
     @Override
     public V takeFirst() throws InterruptedException {
-        return get(takeFirstAsync());
+        return commandExecutor.getInterrupted(takeFirstAsync());
     }
 
     @Override
@@ -206,7 +217,7 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
 
     @Override
     public V takeLast() throws InterruptedException {
-        return get(takeLastAsync());
+        return commandExecutor.getInterrupted(takeLastAsync());
     }
 
     @Override
@@ -216,7 +227,7 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
 
     @Override
     public V pollFirstFromAny(long timeout, TimeUnit unit, String... queueNames) throws InterruptedException {
-        return get(pollFirstFromAnyAsync(timeout, unit, queueNames));
+        return commandExecutor.getInterrupted(pollFirstFromAnyAsync(timeout, unit, queueNames));
     }
 
     @Override
@@ -226,7 +237,17 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
 
     @Override
     public V pollLastFromAny(long timeout, TimeUnit unit, String... queueNames) throws InterruptedException {
-        return get(pollLastFromAnyAsync(timeout, unit, queueNames));
+        return commandExecutor.getInterrupted(pollLastFromAnyAsync(timeout, unit, queueNames));
+    }
+
+    @Override
+    public int subscribeOnFirstElements(Consumer<V> consumer) {
+        return commandExecutor.getConnectionManager().getElementsSubscribeService().subscribeOnElements(this::takeFirstAsync, consumer);
+    }
+
+    @Override
+    public int subscribeOnLastElements(Consumer<V> consumer) {
+        return commandExecutor.getConnectionManager().getElementsSubscribeService().subscribeOnElements(this::takeLastAsync, consumer);
     }
 
     @Override
@@ -236,7 +257,7 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
 
     @Override
     public V pollFirst(long timeout, TimeUnit unit) throws InterruptedException {
-        return get(pollFirstAsync(timeout, unit));
+        return commandExecutor.getInterrupted(pollFirstAsync(timeout, unit));
     }
 
     @Override
@@ -246,7 +267,7 @@ public class RedissonBlockingDeque<V> extends RedissonDeque<V> implements RBlock
 
     @Override
     public V pollLast(long timeout, TimeUnit unit) throws InterruptedException {
-        return get(pollLastAsync(timeout, unit));
+        return commandExecutor.getInterrupted(pollLastAsync(timeout, unit));
    }
 
 }

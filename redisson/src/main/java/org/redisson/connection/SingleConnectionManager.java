@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,8 +48,8 @@ public class SingleConnectionManager extends MasterSlaveConnectionManager {
         newconfig.setRetryAttempts(cfg.getRetryAttempts());
         newconfig.setRetryInterval(cfg.getRetryInterval());
         newconfig.setTimeout(cfg.getTimeout());
-        newconfig.setPingTimeout(cfg.getPingTimeout());
         newconfig.setPassword(cfg.getPassword());
+        newconfig.setUsername(cfg.getUsername());
         newconfig.setDatabase(cfg.getDatabase());
         newconfig.setClientName(cfg.getClientName());
         newconfig.setMasterAddress(cfg.getAddress());

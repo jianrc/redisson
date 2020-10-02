@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,24 +15,10 @@
  */
 package org.redisson.hibernate;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Arrays;
-import java.util.Properties;
-
 import org.hibernate.boot.registry.selector.spi.StrategySelector;
 import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.CacheException;
-import org.hibernate.cache.internal.DefaultCacheKeysFactory;
-import org.hibernate.cache.spi.CacheDataDescription;
-import org.hibernate.cache.spi.CacheKeysFactory;
-import org.hibernate.cache.spi.CollectionRegion;
-import org.hibernate.cache.spi.EntityRegion;
-import org.hibernate.cache.spi.NaturalIdRegion;
-import org.hibernate.cache.spi.QueryResultsRegion;
-import org.hibernate.cache.spi.RegionFactory;
-import org.hibernate.cache.spi.TimestampsRegion;
+import org.hibernate.cache.spi.*;
 import org.hibernate.cache.spi.access.AccessType;
 import org.hibernate.cfg.Environment;
 import org.hibernate.cfg.Settings;
@@ -44,11 +30,13 @@ import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.LongCodec;
 import org.redisson.config.Config;
-import org.redisson.hibernate.region.RedissonCollectionRegion;
-import org.redisson.hibernate.region.RedissonEntityRegion;
-import org.redisson.hibernate.region.RedissonNaturalIdRegion;
-import org.redisson.hibernate.region.RedissonQueryRegion;
-import org.redisson.hibernate.region.RedissonTimestampsRegion;
+import org.redisson.hibernate.region.*;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Properties;
 
 /**
  * Hibernate Cache region factory based on Redisson. 
@@ -82,6 +70,8 @@ public class RedissonRegionFactory implements RegionFactory {
     public static final String CONFIG_PREFIX = "hibernate.cache.redisson.";
     
     public static final String REDISSON_CONFIG_PATH = CONFIG_PREFIX + "config";
+
+    public static final String FALLBACK = CONFIG_PREFIX + "fallback";
     
     protected RedissonClient redisson;
     private Settings settings;
@@ -94,7 +84,7 @@ public class RedissonRegionFactory implements RegionFactory {
         
         StrategySelector selector = settings.getServiceRegistry().getService(StrategySelector.class);
         cacheKeysFactory = selector.resolveDefaultableStrategy(CacheKeysFactory.class, 
-                                properties.get(Environment.CACHE_KEYS_FACTORY), DefaultCacheKeysFactory.INSTANCE);
+                                properties.get(Environment.CACHE_KEYS_FACTORY), new RedissonCacheKeysFactory(redisson.getConfig().getCodec()));
     }
 
     protected RedissonClient createRedissonClient(Properties properties) {
@@ -185,7 +175,7 @@ public class RedissonRegionFactory implements RegionFactory {
         log.debug("Building entity cache region: " + regionName);
 
         RMapCache<Object, Object> mapCache = getCache(regionName, properties, ENTITY_DEF);
-        return new RedissonEntityRegion(mapCache, this, metadata, settings, properties, ENTITY_DEF, cacheKeysFactory);
+        return new RedissonEntityRegion(mapCache, ((Redisson)redisson).getConnectionManager(),this, metadata, settings, properties, ENTITY_DEF, cacheKeysFactory);
     }
 
     @Override
@@ -194,7 +184,7 @@ public class RedissonRegionFactory implements RegionFactory {
         log.debug("Building naturalId cache region: " + regionName);
         
         RMapCache<Object, Object> mapCache = getCache(regionName, properties, NATURAL_ID_DEF);
-        return new RedissonNaturalIdRegion(mapCache, this, metadata, settings, properties, NATURAL_ID_DEF, cacheKeysFactory);
+        return new RedissonNaturalIdRegion(mapCache, ((Redisson)redisson).getConnectionManager(),this, metadata, settings, properties, NATURAL_ID_DEF, cacheKeysFactory);
     }
 
     @Override
@@ -203,7 +193,7 @@ public class RedissonRegionFactory implements RegionFactory {
         log.debug("Building collection cache region: " + regionName);
         
         RMapCache<Object, Object> mapCache = getCache(regionName, properties, COLLECTION_DEF);
-        return new RedissonCollectionRegion(mapCache, this, metadata, settings, properties, COLLECTION_DEF, cacheKeysFactory);
+        return new RedissonCollectionRegion(mapCache, ((Redisson)redisson).getConnectionManager(),this, metadata, settings, properties, COLLECTION_DEF, cacheKeysFactory);
     }
 
     @Override
@@ -211,7 +201,7 @@ public class RedissonRegionFactory implements RegionFactory {
         log.debug("Building query cache region: " + regionName);
         
         RMapCache<Object, Object> mapCache = getCache(regionName, properties, QUERY_DEF);
-        return new RedissonQueryRegion(mapCache, this, properties, QUERY_DEF);
+        return new RedissonQueryRegion(mapCache, ((Redisson)redisson).getConnectionManager(),this, properties, QUERY_DEF);
     }
 
     @Override
@@ -219,7 +209,7 @@ public class RedissonRegionFactory implements RegionFactory {
         log.debug("Building timestamps cache region: " + regionName);
         
         RMapCache<Object, Object> mapCache = getCache(regionName, properties, TIMESTAMPS_DEF);
-        return new RedissonTimestampsRegion(mapCache, this, properties, TIMESTAMPS_DEF);
+        return new RedissonTimestampsRegion(mapCache, ((Redisson)redisson).getConnectionManager(),this, properties, TIMESTAMPS_DEF);
     }
     
     protected RMapCache<Object, Object> getCache(String regionName, Properties properties, String defaultKey) {

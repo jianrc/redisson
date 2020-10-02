@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,14 @@ public class RedissonKeysReactive {
         super();
         instance = new RedissonKeys(commandExecutor);
         this.commandExecutor = commandExecutor;
+    }
+
+    public Flux<String> getKeys() {
+        return getKeysByPattern(null);
+    }
+
+    public Flux<String> getKeys(int count) {
+        return getKeysByPattern(null, count);
     }
 
     public Flux<String> getKeysByPattern(String pattern) {

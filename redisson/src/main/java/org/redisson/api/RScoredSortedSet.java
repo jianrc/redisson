@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,11 @@ package org.redisson.api;
 
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import org.redisson.api.mapreduce.RCollectionMapReduce;
@@ -94,7 +96,32 @@ public interface RScoredSortedSet<V> extends RScoredSortedSetAsync<V>, Iterable<
      * @return the tail element
      */
     V takeLast();
-    
+
+    /**
+     * Subscribes on first elements appeared in this set.
+     * Continuously invokes {@link #takeFirstAsync()} method to get a new element.
+     *
+     * @param consumer - queue elements listener
+     * @return listenerId - id of listener
+     */
+    int subscribeOnFirstElements(Consumer<V> consumer);
+
+    /**
+     * Subscribes on last elements appeared in this set.
+     * Continuously invokes {@link #takeLastAsync()} method to get a new element.
+     *
+     * @param consumer - queue elements listener
+     * @return listenerId - id of listener
+     */
+    int subscribeOnLastElements(Consumer<V> consumer);
+
+    /**
+     * Un-subscribes defined listener.
+     *
+     * @param listenerId - id of listener
+     */
+    void unsubscribe(int listenerId);
+
     /**
      * Removes and returns the head element or {@code null} if this sorted set is empty.
      *
@@ -119,19 +146,18 @@ public interface RScoredSortedSet<V> extends RScoredSortedSetAsync<V>, Iterable<
     V pollLast(long timeout, TimeUnit unit);
     
     /**
-     * Removes and returns the head elements or {@code null} if this sorted set is empty.
+     * Removes and returns the head elements of this sorted set.
      *
      * @param count - elements amount
-     * @return the head element, 
-     *         or {@code null} if this sorted set is empty
+     * @return the head elements of this sorted set
      */
     Collection<V> pollFirst(int count);
 
     /**
-     * Removes and returns the tail elements or {@code null} if this sorted set is empty.
+     * Removes and returns the tail elements of this sorted set.
      * 
      * @param count - elements amount
-     * @return the tail element or {@code null} if this sorted set is empty
+     * @return the tail elements of this sorted set
      */
     Collection<V> pollLast(int count);
     
@@ -230,12 +256,28 @@ public interface RScoredSortedSet<V> extends RScoredSortedSetAsync<V>, Iterable<
     Integer revRank(V o);
 
     /**
+     * Returns ranks of elements, with the scores ordered from high to low.
+     *
+     * @param elements - elements
+     * @return ranks or <code>null</code> if value does not exist
+     */
+    List<Integer> revRank(Collection<V> elements);
+
+    /**
      * Returns score of element or <code>null</code> if it doesn't exist.
      * 
      * @param o - element
      * @return score
      */
     Double getScore(V o);
+
+    /**
+     * Returns scores of elements.
+     *
+     * @param elements - elements
+     * @return element scores
+     */
+    List<Double> getScore(List<V> elements);
 
     /**
      * Adds element to this set, overrides previous score if it has been already added.
@@ -263,6 +305,14 @@ public interface RScoredSortedSet<V> extends RScoredSortedSetAsync<V>, Iterable<
      * @return reverse rank
      */
     Integer addAndGetRevRank(double score, V object);
+
+    /**
+     * Adds elements to this set, overrides previous score if it has been already added.
+     * Finally returns reverse rank list of the items
+     * @param map - map of object and scores, make sure to use an ordered map
+     * @return collection of reverse ranks
+     */
+    List<Integer> addAndGetRevRank(Map<? extends V, Double> map);
 
     /**
      * Adds element to this set only if has not been added before.
@@ -374,6 +424,7 @@ public interface RScoredSortedSet<V> extends RScoredSortedSetAsync<V>, Iterable<
     /**
      * Returns this sorted set in array of defined type.
      * 
+     * @param <T> type of element
      * @param a - instance of array
      * @return array of values
      */

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
  */
 package org.redisson.spring.transaction;
 
-import java.util.concurrent.TimeUnit;
-
 import org.redisson.api.RTransaction;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.TransactionOptions;
@@ -28,6 +26,8 @@ import org.springframework.transaction.support.AbstractPlatformTransactionManage
 import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.support.ResourceTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * 
@@ -93,7 +93,7 @@ public class RedissonTransactionManager extends AbstractPlatformTransactionManag
         RedissonTransactionObject to = (RedissonTransactionObject) status.getTransaction();
         try {
             to.getTransactionHolder().getTransaction().commit();
-        } catch (TransactionException e) {
+        } catch (org.redisson.transaction.TransactionException e) {
             throw new TransactionSystemException("Unable to commit transaction", e);
         }
     }
@@ -103,8 +103,8 @@ public class RedissonTransactionManager extends AbstractPlatformTransactionManag
         RedissonTransactionObject to = (RedissonTransactionObject) status.getTransaction();
         try {
             to.getTransactionHolder().getTransaction().rollback();
-        } catch (TransactionException e) {
-            throw new TransactionSystemException("Unable to commit transaction", e);
+        } catch (org.redisson.transaction.TransactionException e) {
+            throw new TransactionSystemException("Unable to rollback transaction", e);
         }
     }
 
@@ -113,7 +113,19 @@ public class RedissonTransactionManager extends AbstractPlatformTransactionManag
         RedissonTransactionObject to = (RedissonTransactionObject) status.getTransaction();
         to.setRollbackOnly(true);
     }
-    
+
+    @Override
+    protected void doResume(Object transaction, Object suspendedResources) throws TransactionException {
+        TransactionSynchronizationManager.bindResource(redisson, suspendedResources);
+    }
+
+    @Override
+    protected Object doSuspend(Object transaction) throws TransactionException {
+        RedissonTransactionObject to = (RedissonTransactionObject) transaction;
+        to.setTransactionHolder(null);
+        return TransactionSynchronizationManager.unbindResource(redisson);
+    }
+
     @Override
     protected void doCleanupAfterCompletion(Object transaction) {
         TransactionSynchronizationManager.unbindResourceIfPossible(redisson);

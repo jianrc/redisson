@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.redisson.client.protocol.decoder;
 import java.util.List;
 import java.util.Map;
 
+import org.redisson.client.codec.LongCodec;
 import org.redisson.client.handler.State;
 import org.redisson.client.protocol.Decoder;
 
@@ -38,7 +39,7 @@ public class MapCacheScanResultReplayDecoder implements MultiDecoder<MapCacheSca
 
     @Override
     public Decoder<Object> getDecoder(int paramNum, State state) {
-        return null;
+        return LongCodec.INSTANCE.getValueDecoder();
     }
 
 }

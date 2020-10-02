@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 package org.redisson.tomcat;
 
+import java.util.Set;
+
 /**
  * 
  * @author Nikita Koksharov
@@ -22,19 +24,19 @@ package org.redisson.tomcat;
  */
 public class AttributeRemoveMessage extends AttributeMessage {
 
-    private String name;
+    private Set<String> names;
     
     public AttributeRemoveMessage() {
         super();
     }
 
-    public AttributeRemoveMessage(String nodeId, String sessionId, String name) {
+    public AttributeRemoveMessage(String nodeId, String sessionId, Set<String> names) {
         super(nodeId, sessionId);
-        this.name = name;
+        this.names = names;
     }
 
-    public String getName() {
-        return name;
+    public Set<String> getNames() {
+        return names;
     }
     
 }

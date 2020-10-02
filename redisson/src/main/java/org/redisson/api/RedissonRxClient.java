@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,34 @@ import org.redisson.config.Config;
  * Main Redisson interface for access
  * to all redisson objects with RxJava2 interface.
  *
+ * @see RedissonReactiveClient
+ * @see RedissonClient
+ *
+ *
  * @author Nikita Koksharov
  *
  */
 public interface RedissonRxClient {
+
+    /**
+     * Returns time-series instance by <code>name</code>
+     *
+     * @param <V> type of value
+     * @param name - name of instance
+     * @return RTimeSeries object
+     */
+    <V> RTimeSeriesRx<V> getTimeSeries(String name);
+
+    /**
+     * Returns time-series instance by <code>name</code>
+     * using provided <code>codec</code> for values.
+     *
+     * @param <V> type of value
+     * @param name - name of instance
+     * @param codec - codec for values
+     * @return RTimeSeries object
+     */
+    <V> RTimeSeriesRx<V> getTimeSeries(String name, Codec codec);
 
     /**
      * Returns stream instance by <code>name</code>
@@ -80,7 +104,15 @@ public interface RedissonRxClient {
      * @return RateLimiter object
      */
     RRateLimiterRx getRateLimiter(String name);
-    
+
+    /**
+     * Returns binary stream holder instance by <code>name</code>
+     *
+     * @param name of binary stream
+     * @return BinaryStream object
+     */
+    RBinaryStreamRx getBinaryStream(String name);
+
     /**
      * Returns semaphore instance by name
      *
@@ -99,7 +131,9 @@ public interface RedissonRxClient {
     RPermitExpirableSemaphoreRx getPermitExpirableSemaphore(String name);
     
     /**
-     * Returns readWriteLock instance by name.
+     * Returns ReadWriteLock instance by name.
+     * <p>
+     * To increase reliability during failover, all operations wait for propagation to all Redis slaves.
      *
      * @param name - name of object
      * @return Lock object
@@ -107,9 +141,11 @@ public interface RedissonRxClient {
     RReadWriteLockRx getReadWriteLock(String name);
     
     /**
-     * Returns lock instance by name.
+     * Returns Lock instance by name.
      * <p>
      * Implements a <b>fair</b> locking so it guarantees an acquire order by threads.
+     * <p>
+     * To increase reliability during failover, all operations wait for propagation to all Redis slaves.
      * 
      * @param name - name of object
      * @return Lock object
@@ -117,15 +153,39 @@ public interface RedissonRxClient {
     RLockRx getFairLock(String name);
     
     /**
-     * Returns lock instance by name.
+     * Returns Lock instance by name.
      * <p>
-     * Implements a <b>non-fair</b> locking so doesn't guarantee an acquire order by threads.
+     * Implements a <b>non-fair</b> locking so doesn't guarantees an acquire order by threads.
+     * <p>
+     * To increase reliability during failover, all operations wait for propagation to all Redis slaves.
      *
      * @param name - name of object
      * @return Lock object
      */
     RLockRx getLock(String name);
     
+    /**
+     * Returns MultiLock instance associated with specified <code>locks</code>
+     * 
+     * @param locks - collection of locks
+     * @return MultiLock object
+     */
+    RLockRx getMultiLock(RLock... locks);
+    
+    /*
+     * Use getLock method instead. Returned instance uses Redis Slave synchronization
+     */
+    @Deprecated
+    RLockRx getRedLock(RLock... locks);
+
+    /**
+     * Returns CountDownLatch instance by name.
+     *
+     * @param name - name of object
+     * @return CountDownLatch object
+     */
+    RCountDownLatchRx getCountDownLatch(String name);
+
     /**
      * Returns set-based cache instance by <code>name</code>.
      * Supports value eviction with a given TTL value.
@@ -228,6 +288,22 @@ public interface RedissonRxClient {
      * @return Bucket object
      */
     <V> RBucketRx<V> getBucket(String name, Codec codec);
+
+    /**
+     * Returns interface for mass operations with Bucket objects.
+     *
+     * @return Buckets
+     */
+    RBucketsRx getBuckets();
+
+    /**
+     * Returns interface for mass operations with Bucket objects
+     * using provided codec for object.
+     *
+     * @param codec - codec for bucket objects
+     * @return Buckets
+     */
+    RBucketsRx getBuckets(Codec codec);
 
     /**
      * Returns HyperLogLog instance by name.
@@ -478,6 +554,25 @@ public interface RedissonRxClient {
     <V> RQueueRx<V> getQueue(String name, Codec codec);
 
     /**
+     * Returns RingBuffer based queue.
+     * 
+     * @param <V> value type
+     * @param name - name of object
+     * @return RingBuffer object
+     */
+    <V> RRingBufferRx<V> getRingBuffer(String name);
+    
+    /**
+     * Returns RingBuffer based queue.
+     * 
+     * @param <V> value type
+     * @param name - name of object
+     * @param codec - codec for values
+     * @return RingBuffer object
+     */
+    <V> RRingBufferRx<V> getRingBuffer(String name, Codec codec);
+    
+    /**
      * Returns blocking queue instance by name.
      * 
      * @param <V> type of values
@@ -516,7 +611,27 @@ public interface RedissonRxClient {
      * @return BlockingDeque object
      */
     <V> RBlockingDequeRx<V> getBlockingDeque(String name, Codec codec);
-    
+
+    /**
+     * Returns transfer queue instance by name.
+     *
+     * @param <V> type of values
+     * @param name - name of object
+     * @return TransferQueue object
+     */
+    <V> RTransferQueueRx<V> getTransferQueue(String name);
+
+    /**
+     * Returns transfer queue instance by name
+     * using provided codec for queue objects.
+     *
+     * @param <V> type of values
+     * @param name - name of object
+     * @param codec - code for values
+     * @return TransferQueue object
+     */
+    <V> RTransferQueueRx<V> getTransferQueue(String name, Codec codec);
+
     /**
      * Returns deque instance by name.
      * 
@@ -553,6 +668,40 @@ public interface RedissonRxClient {
      */
     RAtomicDoubleRx getAtomicDouble(String name);
 
+    /**
+     * Returns object for remote operations prefixed with the default name (redisson_remote_service)
+     * 
+     * @return RemoteService object
+     */
+    RRemoteService getRemoteService();
+    
+    /**
+     * Returns object for remote operations prefixed with the default name (redisson_remote_service)
+     * and uses provided codec for method arguments and result.
+     * 
+     * @param codec - codec for response and request
+     * @return RemoteService object
+     */
+    RRemoteService getRemoteService(Codec codec);
+
+    /**
+     * Returns object for remote operations prefixed with the specified name
+     *
+     * @param name - the name used as the Redis key prefix for the services
+     * @return RemoteService object
+     */
+    RRemoteService getRemoteService(String name);
+    
+    /**
+     * Returns object for remote operations prefixed with the specified name
+     * and uses provided codec for method arguments and result.
+     *
+     * @param name - the name used as the Redis key prefix for the services
+     * @param codec - codec for response and request
+     * @return RemoteService object
+     */
+    RRemoteService getRemoteService(String name, Codec codec);
+    
     /**
      * Returns bitSet instance by name.
      *
@@ -594,6 +743,16 @@ public interface RedissonRxClient {
      * @return Batch object
      */
     RBatchRx createBatch(BatchOptions options);
+
+    /**
+     * Return batch object which executes group of
+     * command in pipeline.
+     *
+     * See <a href="http://redis.io/topics/pipelining">http://redis.io/topics/pipelining</a>
+     *
+     * @return Batch object
+     */
+    RBatchRx createBatch();
 
     /**
      * Returns keys operations.
@@ -647,4 +806,11 @@ public interface RedissonRxClient {
      */
     boolean isShuttingDown();
 
+    /**
+     * Returns id of this Redisson instance
+     * 
+     * @return id
+     */
+    String getId();
+    
 }

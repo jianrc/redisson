@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ public class DefaultReferenceCodecProvider implements ReferenceCodecProvider {
         Codec codec = codecCache.get(codecClass);
         if (codec == null) {
             try {
-                codec = codecClass.newInstance();
+                codec = codecClass.getDeclaredConstructor().newInstance();
                 codecCache.putIfAbsent(codecClass, codec);
             } catch (Exception ex) {
                 throw new RuntimeException(ex);

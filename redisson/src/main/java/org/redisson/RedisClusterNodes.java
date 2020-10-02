@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import org.redisson.api.ClusterNode;
 import org.redisson.api.ClusterNodesGroup;
 import org.redisson.connection.ConnectionManager;
 
+@Deprecated
 public class RedisClusterNodes extends RedisNodes<ClusterNode> implements ClusterNodesGroup {
 
     public RedisClusterNodes(ConnectionManager connectionManager) {

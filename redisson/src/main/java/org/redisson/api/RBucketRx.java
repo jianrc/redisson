@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@
  */
 package org.redisson.api;
 
-import java.util.concurrent.TimeUnit;
+import io.reactivex.Completable;
+import io.reactivex.Maybe;
+import io.reactivex.Single;
 
-import io.reactivex.Flowable;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -34,7 +36,7 @@ public interface RBucketRx<V> extends RExpirableRx {
      * 
      * @return object size
      */
-    Flowable<Long> size();
+    Single<Long> size();
     
     /**
      * Tries to set element atomically into empty holder.
@@ -43,7 +45,7 @@ public interface RBucketRx<V> extends RExpirableRx {
      * @return {@code true} if successful, or {@code false} if
      *         element was already set
      */
-    Flowable<Boolean> trySet(V value);
+    Single<Boolean> trySet(V value);
 
     /**
      * Tries to set element atomically into empty holder with defined <code>timeToLive</code> interval.
@@ -54,7 +56,27 @@ public interface RBucketRx<V> extends RExpirableRx {
      * @return {@code true} if successful, or {@code false} if
      *         element was already set
      */
-    Flowable<Boolean> trySet(V value, long timeToLive, TimeUnit timeUnit);
+    Single<Boolean> trySet(V value, long timeToLive, TimeUnit timeUnit);
+
+    /**
+     * Sets value only if it's already exists.
+     *
+     * @param value - value to set
+     * @return {@code true} if successful, or {@code false} if
+     *         element wasn't set
+     */
+    Single<Boolean> setIfExists(V value);
+
+    /**
+     * Sets value only if it's already exists.
+     *
+     * @param value - value to set
+     * @param timeToLive - time to live interval
+     * @param timeUnit - unit of time to live interval
+     * @return {@code true} if successful, or {@code false} if
+     *         element wasn't set
+     */
+    Single<Boolean> setIfExists(V value, long timeToLive, TimeUnit timeUnit);
 
     /**
      * Atomically sets the value to the given updated value
@@ -66,7 +88,7 @@ public interface RBucketRx<V> extends RExpirableRx {
      * @return {@code true} if successful; or {@code false} if the actual value
      *         was not equal to the expected value.
      */
-    Flowable<Boolean> compareAndSet(V expect, V update);
+    Single<Boolean> compareAndSet(V expect, V update);
 
     /**
      * Retrieves current element in the holder and replaces it with <code>newValue</code>. 
@@ -74,21 +96,31 @@ public interface RBucketRx<V> extends RExpirableRx {
      * @param newValue - value to set
      * @return previous value
      */
-    Flowable<V> getAndSet(V newValue);
+    Maybe<V> getAndSet(V newValue);
+    
+    /**
+     * Retrieves current element in the holder and replaces it with <code>newValue</code> with defined <code>timeToLive</code> interval. 
+     * 
+     * @param value - value to set
+     * @param timeToLive - time to live interval
+     * @param timeUnit - unit of time to live interval
+     * @return previous value
+     */
+    Maybe<V> getAndSet(V value, long timeToLive, TimeUnit timeUnit);
 
     /**
      * Retrieves element stored in the holder.
      * 
      * @return element
      */
-    Flowable<V> get();
+    Maybe<V> get();
     
     /**
      * Retrieves element in the holder and removes it.
      * 
      * @return element
      */
-    Flowable<V> getAndDelete();
+    Maybe<V> getAndDelete();
 
     /**
      * Stores element into the holder. 
@@ -96,7 +128,7 @@ public interface RBucketRx<V> extends RExpirableRx {
      * @param value - value to set
      * @return void
      */
-    Flowable<Void> set(V value);
+    Completable set(V value);
 
     /**
      * Stores element into the holder with defined <code>timeToLive</code> interval.
@@ -106,6 +138,6 @@ public interface RBucketRx<V> extends RExpirableRx {
      * @param timeUnit - unit of time to live interval
      * @return void
      */
-    Flowable<Void> set(V value, long timeToLive, TimeUnit timeUnit);
+    Completable set(V value, long timeToLive, TimeUnit timeUnit);
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,34 +36,28 @@ public class DefaultNamingScheme extends AbstractNamingScheme implements NamingS
     }
 
     @Override
-    public String getName(Class<?> entityClass, Class<?> idFieldClass, String idFieldName, Object idValue) {
+    public String getNamePattern(Class<?> entityClass) {
+        return "redisson_live_object:{" + "*" + "}:" + entityClass.getName();
+    }
+
+    @Override
+    public String getName(Class<?> entityClass, Object idValue) {
         try {
             String encode = bytesToHex(codec.getMapKeyEncoder().encode(idValue));
-            return "redisson_live_object:{"+ encode + "}:" + entityClass.getName() + ":" + idFieldName + ":" + idFieldClass.getName();
+            return "redisson_live_object:{"+ encode + "}:" + entityClass.getName();
         } catch (IOException ex) {
-            throw new IllegalArgumentException("Unable to encode \"" + idFieldName + "\" [" + idValue + "] into byte[]", ex);
+            throw new IllegalArgumentException("Unable create name for '" + entityClass + "' with id:" + idValue, ex);
         }
     }
 
     @Override
-    public String getFieldReferenceName(Class<?> entityClass, Object idValue, Class<?> fieldClass, String fieldName, Object fieldValue) {
+    public String getFieldReferenceName(Class<?> entityClass, Object idValue, Class<?> fieldClass, String fieldName) {
         try {
             String encode = bytesToHex(codec.getMapKeyEncoder().encode(idValue));
-            return "redisson_live_object_field:{" + encode + "}:" + entityClass.getName() + ":" + fieldName + ":" + fieldClass.getName();
+            return "redisson_live_object_field:{" + encode + "}:" + entityClass.getName() + ":" + fieldName;
         } catch (IOException ex) {
-            throw new IllegalArgumentException("Unable to encode \"" + fieldName + "\" [" + fieldValue + "] into byte[]", ex);
+            throw new IllegalArgumentException("Unable create name for '" + entityClass + "' and field:'" + fieldName + "' with id:" + idValue, ex);
         }
-    }
-
-    @Override
-    public String resolveClassName(String name) {
-        return name.substring(name.lastIndexOf("}:") + 2, name.indexOf(":"));
-    }
-
-    @Override
-    public String resolveIdFieldName(String name) {
-        String s = name.substring(0, name.lastIndexOf(":"));
-        return s.substring(s.lastIndexOf(":") + 1);
     }
 
     @Override

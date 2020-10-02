@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.util.Properties;
 import org.hibernate.cache.spi.RegionFactory;
 import org.hibernate.cache.spi.TimestampsRegion;
 import org.redisson.api.RMapCache;
+import org.redisson.connection.ConnectionManager;
 
 /**
  * 
@@ -28,9 +29,9 @@ import org.redisson.api.RMapCache;
  */
 public class RedissonTimestampsRegion extends BaseRegion implements TimestampsRegion {
 
-    public RedissonTimestampsRegion(RMapCache<Object, Object> mapCache, 
+    public RedissonTimestampsRegion(RMapCache<Object, Object> mapCache, ConnectionManager connectionManager,
             RegionFactory regionFactory, Properties properties, String defaultKey) {
-        super(mapCache, regionFactory, null, properties, defaultKey);
+        super(mapCache, connectionManager, regionFactory, null, properties, defaultKey);
     }
 
 }

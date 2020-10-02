@@ -252,7 +252,7 @@ public class RedissonRedLockTest {
         t.start();
         t.join(1000);
 
-        lockFirst.delete();
+        lockFirst.forceUnlock();
         
         RedissonMultiLock lock = new RedissonRedLock(lock1, lock2, lock3);
         lock.lock();
@@ -369,7 +369,7 @@ public class RedissonRedLockTest {
         t.start();
         t.join();
 
-        await().atMost(5, TimeUnit.SECONDS).until(() -> executed.get());
+        await().atMost(5, TimeUnit.SECONDS).untilTrue(executed);
 
         lock.unlock();
 

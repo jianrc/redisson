@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,7 +90,7 @@ public class RedissonPatternTopic implements RPatternTopic {
     }
     
     private RFuture<Integer> addListenerAsync(RedisPubSubListener<?> pubSubListener) {
-        RFuture<PubSubConnectionEntry> future = subscribeService.subscribe(codec, channelName, pubSubListener);
+        RFuture<PubSubConnectionEntry> future = subscribeService.psubscribe(channelName, codec, pubSubListener);
         RPromise<Integer> result = new RedissonPromise<Integer>();
         future.onComplete((res, e) -> {
             if (e != null) {
@@ -109,6 +109,29 @@ public class RedissonPatternTopic implements RPatternTopic {
         if (!semaphore.tryAcquire(timeout)) {
             throw new RedisTimeoutException("Remove listeners operation timeout: (" + timeout + "ms) for " + name + " topic");
         }
+    }
+    
+    
+    public RFuture<Void> removeListenerAsync(int listenerId) {
+        RPromise<Void> result = new RedissonPromise<>();
+        AsyncSemaphore semaphore = subscribeService.getSemaphore(channelName);
+        semaphore.acquire(() -> {
+            PubSubConnectionEntry entry = subscribeService.getPubSubEntry(channelName);
+            if (entry == null) {
+                semaphore.release();
+                result.trySuccess(null);
+                return;
+            }
+            
+            entry.removeListener(channelName, listenerId);
+            if (!entry.hasListeners(channelName)) {
+                subscribeService.punsubscribe(channelName, semaphore);
+            } else {
+                semaphore.release();
+                result.trySuccess(null);
+            }
+        });
+        return result;
     }
     
     @Override
@@ -141,7 +164,7 @@ public class RedissonPatternTopic implements RPatternTopic {
             return;
         }
 
-        if (entry.removeAllListeners(channelName)) {
+        if (entry.hasListeners(channelName)) {
             subscribeService.punsubscribe(channelName, semaphore);
         } else {
             semaphore.release();

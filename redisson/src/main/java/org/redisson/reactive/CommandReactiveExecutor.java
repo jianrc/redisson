@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package org.redisson.reactive;
 
-import java.util.function.Supplier;
+import java.util.concurrent.Callable;
 
 import org.redisson.api.RFuture;
 import org.redisson.command.CommandAsyncExecutor;
@@ -29,6 +29,6 @@ import reactor.core.publisher.Mono;
  */
 public interface CommandReactiveExecutor extends CommandAsyncExecutor {
 
-    <R> Mono<R> reactive(Supplier<RFuture<R>> supplier);
+    <R> Mono<R> reactive(Callable<RFuture<R>> supplier);
 
 }

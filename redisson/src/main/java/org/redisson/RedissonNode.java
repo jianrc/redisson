@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import org.redisson.api.RExecutorService;
 import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
+import org.redisson.api.WorkerOptions;
 import org.redisson.client.RedisConnection;
 import org.redisson.config.RedissonNodeConfig;
 import org.redisson.connection.ConnectionManager;
@@ -139,15 +140,25 @@ public final class RedissonNode {
             if (mapReduceWorkers == 0) {
                 mapReduceWorkers = Runtime.getRuntime().availableProcessors();
             }
-            redisson.getExecutorService(RExecutorService.MAPREDUCE_NAME).registerWorkers(mapReduceWorkers);
+            
+            WorkerOptions options = WorkerOptions.defaults()
+                                                .workers(mapReduceWorkers)
+                                                .beanFactory(config.getBeanFactory());
+            
+            redisson.getExecutorService(RExecutorService.MAPREDUCE_NAME).registerWorkers(options);
             log.info("{} map reduce worker(s) registered", mapReduceWorkers);
         }
         
         for (Entry<String, Integer> entry : config.getExecutorServiceWorkers().entrySet()) {
             String name = entry.getKey();
             int workers = entry.getValue();
-            redisson.getExecutorService(name).registerWorkers(workers);
-            log.info("{} worker(s) for '{}' ExecutorService registered", workers, name);
+            
+            WorkerOptions options = WorkerOptions.defaults()
+                                                .workers(workers)
+                                                .beanFactory(config.getBeanFactory());
+            
+            redisson.getExecutorService(name).registerWorkers(options);
+            log.info("{} worker(s) registered for ExecutorService with '{}' name", workers, name);
         }
 
         log.info("Redisson node started!");

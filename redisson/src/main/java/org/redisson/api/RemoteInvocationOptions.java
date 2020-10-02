@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @see RRemoteService#get(Class, RemoteInvocationOptions)
  */
-public class RemoteInvocationOptions implements Serializable {
+public final class RemoteInvocationOptions implements Serializable {
 
     private static final long serialVersionUID = -7715968073286484802L;
     

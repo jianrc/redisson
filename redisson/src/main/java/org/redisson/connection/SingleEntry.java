@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,11 @@
  */
 package org.redisson.connection;
 
-import java.net.URI;
-
 import org.redisson.api.RFuture;
 import org.redisson.client.RedisConnection;
 import org.redisson.client.protocol.RedisCommand;
 import org.redisson.config.MasterSlaveServersConfig;
+import org.redisson.misc.RedisURI;
 
 /**
  * 
@@ -29,12 +28,12 @@ import org.redisson.config.MasterSlaveServersConfig;
  */
 public class SingleEntry extends MasterSlaveEntry {
 
-    public SingleEntry(ConnectionManager connectionManager, MasterSlaveServersConfig config) {
-        super(connectionManager, config);
+    public SingleEntry(ConnectionManager connectionManager, MasterSlaveServersConfig config, String sslHostname) {
+        super(connectionManager, config, sslHostname);
     }
 
     @Override
-    public RFuture<RedisConnection> connectionReadOp(RedisCommand<?> command, URI addr) {
+    public RFuture<RedisConnection> connectionReadOp(RedisCommand<?> command, RedisURI addr) {
         return super.connectionWriteOp(command);
     }
 

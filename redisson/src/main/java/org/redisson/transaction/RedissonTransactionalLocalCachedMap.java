@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,11 @@ public class RedissonTransactionalLocalCachedMap<K, V> extends RedissonTransacti
 
     @Override
     public void preloadCache() {
+        throw new UnsupportedOperationException("preloadCache method is not supported in transaction");
+    }
+
+    @Override
+    public void preloadCache(int count) {
         throw new UnsupportedOperationException("preloadCache method is not supported in transaction");
     }
 

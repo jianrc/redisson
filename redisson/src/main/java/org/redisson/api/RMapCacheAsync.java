@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit;
 public interface RMapCacheAsync<K, V> extends RMapAsync<K, V> {
 
     /**
-     * Sets max size of the map.
+     * Sets max size of the map and overrides current value.
      * Superfluous elements are evicted using LRU algorithm.
      * 
      * @param maxSize - max size

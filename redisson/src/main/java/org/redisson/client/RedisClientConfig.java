@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 package org.redisson.client;
 
 import java.net.InetSocketAddress;
-import java.net.URI;
+import java.net.URL;
 import java.util.concurrent.ExecutorService;
 
 import org.redisson.config.SslProvider;
-import org.redisson.misc.URIBuilder;
+import org.redisson.misc.RedisURI;
 
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -35,7 +35,7 @@ import io.netty.util.Timer;
  */
 public class RedisClientConfig {
 
-    private URI address;
+    private RedisURI address;
     private InetSocketAddress addr;
     
     private Timer timer;
@@ -45,7 +45,8 @@ public class RedisClientConfig {
     private Class<? extends SocketChannel> socketChannelClass = NioSocketChannel.class;
     private int connectTimeout = 10000;
     private int commandTimeout = 10000;
-    
+
+    private String username;
     private String password;
     private int database;
     private String clientName;
@@ -59,16 +60,18 @@ public class RedisClientConfig {
     private String sslHostname;
     private boolean sslEnableEndpointIdentification = true;
     private SslProvider sslProvider = SslProvider.JDK;
-    private URI sslTruststore;
+    private URL sslTruststore;
     private String sslTruststorePassword;
-    private URI sslKeystore;
+    private URL sslKeystore;
     private String sslKeystorePassword;
+    private NettyHook nettyHook = new DefaultNettyHook();
     
     public RedisClientConfig() {
     }
     
     RedisClientConfig(RedisClientConfig config) {
         super();
+        this.nettyHook = config.nettyHook;
         this.addr = config.addr;
         this.address = config.address;
         this.timer = config.timer;
@@ -78,6 +81,7 @@ public class RedisClientConfig {
         this.connectTimeout = config.connectTimeout;
         this.commandTimeout = config.commandTimeout;
         this.password = config.password;
+        this.username = config.username;
         this.database = config.database;
         this.clientName = config.clientName;
         this.readOnly = config.readOnly;
@@ -95,7 +99,14 @@ public class RedisClientConfig {
         this.sslHostname = config.sslHostname;
         this.decodeInExecutor = config.decodeInExecutor;
     }
-    
+
+    public NettyHook getNettyHook() {
+        return nettyHook;
+    }
+    public void setNettyHook(NettyHook nettyHook) {
+        this.nettyHook = nettyHook;
+    }
+
     public String getSslHostname() {
         return sslHostname;
     }
@@ -105,23 +116,23 @@ public class RedisClientConfig {
     }
 
     public RedisClientConfig setAddress(String host, int port) {
-        this.address = URIBuilder.create("redis://" + host + ":" + port);
+        this.address = new RedisURI("redis://" + host + ":" + port);
         return this;
     }
     public RedisClientConfig setAddress(String address) {
-        this.address = URIBuilder.create(address);
+        this.address = new RedisURI(address);
         return this;
     }
-    public RedisClientConfig setAddress(InetSocketAddress addr, URI address) {
+    public RedisClientConfig setAddress(InetSocketAddress addr, RedisURI address) {
         this.addr = addr;
         this.address = address;
         return this;
     }
-    public RedisClientConfig setAddress(URI address) {
+    public RedisClientConfig setAddress(RedisURI address) {
         this.address = address;
         return this;
     }
-    public URI getAddress() {
+    public RedisURI getAddress() {
         return address;
     }
     public InetSocketAddress getAddr() {
@@ -184,18 +195,18 @@ public class RedisClientConfig {
         return this;
     }
     
-    public URI getSslTruststore() {
+    public URL getSslTruststore() {
         return sslTruststore;
     }
-    public RedisClientConfig setSslTruststore(URI sslTruststore) {
+    public RedisClientConfig setSslTruststore(URL sslTruststore) {
         this.sslTruststore = sslTruststore;
         return this;
     }
     
-    public URI getSslKeystore() {
+    public URL getSslKeystore() {
         return sslKeystore;
     }
-    public RedisClientConfig setSslKeystore(URI sslKeystore) {
+    public RedisClientConfig setSslKeystore(URL sslKeystore) {
         this.sslKeystore = sslKeystore;
         return this;
     }
@@ -267,6 +278,7 @@ public class RedisClientConfig {
     public boolean isDecodeInExecutor() {
         return decodeInExecutor;
     }
+    @Deprecated
     public RedisClientConfig setDecodeInExecutor(boolean decodeInExecutor) {
         this.decodeInExecutor = decodeInExecutor;
         return this;
@@ -303,7 +315,13 @@ public class RedisClientConfig {
         this.resolverGroup = resolverGroup;
         return this;
     }
-    
-    
-    
+
+    public String getUsername() {
+        return username;
+    }
+    public RedisClientConfig setUsername(String username) {
+        this.username = username;
+        return this;
+    }
+
 }

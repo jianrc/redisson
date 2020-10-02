@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import org.redisson.RedissonLocalCachedMap.CacheValue;
-import org.redisson.misc.Hash;
 import org.redisson.RedissonObject;
+import org.redisson.misc.Hash;
 
 import io.netty.buffer.ByteBuf;
 
@@ -40,9 +39,9 @@ import io.netty.buffer.ByteBuf;
 public class LocalCacheView<K, V> {
 
     private final RedissonObject object;
-    private final Cache<CacheKey, CacheValue> cache;
+    private final Map<CacheKey, CacheValue> cache;
     
-    public LocalCacheView(Cache<CacheKey, CacheValue> cache, RedissonObject object) {
+    public LocalCacheView(Map<CacheKey, CacheValue> cache, RedissonObject object) {
         this.cache = cache;
         this.object = object;
     }
@@ -253,7 +252,7 @@ public class LocalCacheView<K, V> {
         }
     }
 
-    private CacheKey toCacheKey(ByteBuf encodedKey) {
+    public CacheKey toCacheKey(ByteBuf encodedKey) {
         return new CacheKey(Hash.hash128toArray(encodedKey));
     }
     

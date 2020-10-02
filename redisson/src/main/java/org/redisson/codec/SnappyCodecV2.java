@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package org.redisson.codec;
 
-import java.io.IOException;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.redisson.client.codec.BaseCodec;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.handler.State;
@@ -24,8 +24,7 @@ import org.redisson.client.protocol.Decoder;
 import org.redisson.client.protocol.Encoder;
 import org.xerial.snappy.Snappy;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import java.io.IOException;
 
 /**
  * Google's Snappy compression codec.
@@ -44,7 +43,7 @@ public class SnappyCodecV2 extends BaseCodec {
     private final Codec innerCodec;
 
     public SnappyCodecV2() {
-        this(new FstCodec());
+        this(new MarshallingCodec());
     }
 
     public SnappyCodecV2(Codec innerCodec) {
@@ -52,10 +51,10 @@ public class SnappyCodecV2 extends BaseCodec {
     }
 
     public SnappyCodecV2(ClassLoader classLoader) {
-        this(new FstCodec(classLoader));
+        this(new MarshallingCodec(classLoader));
     }
     
-    public SnappyCodecV2(ClassLoader classLoader, SnappyCodecV2 codec) {
+    public SnappyCodecV2(ClassLoader classLoader, SnappyCodecV2 codec) throws ReflectiveOperationException {
         this(copy(classLoader, codec.innerCodec));
     }
     

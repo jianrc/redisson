@@ -1,17 +1,14 @@
 package org.redisson;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.Test;
+import org.redisson.api.RSet;
+import org.redisson.api.RSetMultimap;
 
 import java.io.Serializable;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.Test;
-import org.redisson.api.RSetMultimap;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class RedissonSetMultimapTest extends BaseTest {
 
@@ -118,6 +115,22 @@ public class RedissonSetMultimapTest extends BaseTest {
     }
 
     @Test
+    public void testRemoveAll2() {
+        RSetMultimap<String, Long> testMap = redisson.getSetMultimap( "test-2" );
+        testMap.clear();
+        testMap.put( "t1", 1L );
+        testMap.put( "t1", 2L );
+        testMap.put( "t1", 3L );
+        RSet<Long> set = testMap.get( "t1" );
+        set.removeAll( Arrays.asList( 1L, 2L ) );
+        assertThat(testMap.size()).isOne();
+        assertThat(testMap.get( "t1" ).size()).isEqualTo(1);
+        testMap.clear();
+        assertThat(testMap.size()).isZero();
+        assertThat(testMap.get( "t1" ).size()).isZero();
+    }
+
+    @Test
     public void testGetAdd() {
         RSetMultimap<String, Integer> multimap1 = redisson.getSetMultimap("myMultimap1");
         Set<Integer> one = multimap1.get("1");
@@ -201,6 +214,15 @@ public class RedissonSetMultimapTest extends BaseTest {
         assertThat(multimap1.keySize()).isEqualTo(0);
     }
 
+    @Test
+    public void testSizeInMemory() {
+        RSetMultimap<String, String> set = redisson.getSetMultimap("test");
+        set.put("1", "2");
+        assertThat(set.sizeInMemory()).isEqualTo(229);
+
+        set.put("1", "3");
+        assertThat(set.sizeInMemory()).isEqualTo(259);
+    }
     
     @Test
     public void testSize() {
@@ -254,6 +276,21 @@ public class RedissonSetMultimapTest extends BaseTest {
         assertThat(s2).containsOnly(new SimpleValue("4"));
     }
 
+    @Test
+    public void testRemoveAllFromCollection() {
+        RSetMultimap<SimpleKey, SimpleValue> map = redisson.getSetMultimap("test1");
+        map.put(new SimpleKey("0"), new SimpleValue("1"));
+        map.put(new SimpleKey("0"), new SimpleValue("2"));
+        map.put(new SimpleKey("0"), new SimpleValue("3"));
+
+        Collection<SimpleValue> values = Arrays.asList(new SimpleValue("1"), new SimpleValue("2"));
+        assertThat(map.get(new SimpleKey("0")).removeAll(values)).isTrue();
+        assertThat(map.get(new SimpleKey("0")).size()).isEqualTo(1);
+        assertThat(map.get(new SimpleKey("0")).removeAll(Arrays.asList(new SimpleValue("3")))).isTrue();
+        assertThat(map.get(new SimpleKey("0")).size()).isZero();
+        assertThat(map.get(new SimpleKey("0")).removeAll(Arrays.asList(new SimpleValue("3")))).isFalse();
+    }
+    
     @Test
     public void testRemoveAll() {
         RSetMultimap<SimpleKey, SimpleValue> map = redisson.getSetMultimap("test1");
@@ -364,6 +401,19 @@ public class RedissonSetMultimapTest extends BaseTest {
     }
 
     @Test
+    public void testExpire() throws InterruptedException {
+        RSetMultimap<String, String> map = redisson.getSetMultimap("simple");
+        map.put("1", "2");
+        map.put("2", "3");
+
+        map.expire(100, TimeUnit.MILLISECONDS);
+
+        Thread.sleep(500);
+
+        assertThat(map.size()).isZero();
+    }
+
+    @Test
     public void testReplaceValues() {
         RSetMultimap<SimpleKey, SimpleValue> map = redisson.getSetMultimap("test1");
         map.put(new SimpleKey("0"), new SimpleValue("1"));
@@ -375,19 +425,6 @@ public class RedissonSetMultimapTest extends BaseTest {
 
         Set<SimpleValue> allValues = map.getAll(new SimpleKey("0"));
         assertThat(allValues).containsOnlyElementsOf(values);
-    }
-
-    @Test
-    public void testExpire() throws InterruptedException {
-        RSetMultimap<String, String> map = redisson.getSetMultimap("simple");
-        map.put("1", "2");
-        map.put("2", "3");
-
-        map.expire(100, TimeUnit.MILLISECONDS);
-
-        Thread.sleep(500);
-
-        assertThat(map.size()).isZero();
     }
 
     @Test
@@ -427,6 +464,60 @@ public class RedissonSetMultimapTest extends BaseTest {
         
         RSetMultimap<String, String> map2 = redisson.getSetMultimap("simple1");
         assertThat(map2.delete()).isFalse();
+
+        RSetMultimap<String, String> multiset = redisson.getSetMultimap( "test" );
+        multiset.put("1", "01");
+        multiset.put("1", "02");
+        multiset.put("1", "03");
+        RSet<String> set = multiset.get( "1" );
+
+        set.delete();
+        assertThat(multiset.size()).isZero();
+        assertThat(multiset.get("1").size()).isZero();
+    }
+
+    @Test
+    public void testRename() {
+        RSetMultimap<String, String> map = redisson.getSetMultimap("simple");
+        map.put("1", "2");
+        map.put("2", "3");
+        map.rename("simple2");
+
+        RSetMultimap<String, String> map2 = redisson.getSetMultimap("simple2");
+        assertThat(map2.size()).isEqualTo(2);
+        assertThat(map2.get("1")).containsOnly("2");
+        assertThat(map2.get("2")).containsOnly("3");
+
+        RSetMultimap<String, String> map3 = redisson.getSetMultimap("simple");
+        assertThat(map3.isExists()).isFalse();
+        assertThat(map3.isEmpty()).isTrue();
+    }
+
+    @Test
+    public void testRenamenx() {
+        RSetMultimap<String, String> map = redisson.getSetMultimap("simple");
+        map.put("1", "2");
+        map.put("2", "3");
+
+        RSetMultimap<String, String> map2 = redisson.getSetMultimap("simple2");
+        map2.put("4", "5");
+
+        assertThat(map.renamenx("simple2")).isFalse();
+        assertThat(map.size()).isEqualTo(2);
+        assertThat(map.get("1")).containsOnly("2");
+        assertThat(map.get("2")).containsOnly("3");
+        assertThat(map2.get("4")).containsOnly("5");
+
+        assertThat(map.renamenx("simple3")).isTrue();
+
+        RSetMultimap<String, String> map3 = redisson.getSetMultimap("simple");
+        assertThat(map3.isExists()).isFalse();
+        assertThat(map3.isEmpty()).isTrue();
+
+        RSetMultimap<String, String> map4 = redisson.getSetMultimap("simple3");
+        assertThat(map4.size()).isEqualTo(2);
+        assertThat(map4.get("1")).containsOnly("2");
+        assertThat(map4.get("2")).containsOnly("3");
     }
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,17 @@
  */
 package org.redisson.codec;
 
-import java.io.IOException;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.handler.codec.compression.Snappy;
+import io.netty.util.concurrent.FastThreadLocal;
 import org.redisson.client.codec.BaseCodec;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.handler.State;
 import org.redisson.client.protocol.Decoder;
 import org.redisson.client.protocol.Encoder;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.handler.codec.compression.Snappy;
-import io.netty.util.concurrent.FastThreadLocal;
+import java.io.IOException;
 
 /**
  * Snappy compression codec.
@@ -55,7 +54,7 @@ public class SnappyCodec extends BaseCodec {
     private final Codec innerCodec;
 
     public SnappyCodec() {
-        this(new FstCodec());
+        this(new MarshallingCodec());
     }
 
     public SnappyCodec(Codec innerCodec) {
@@ -63,10 +62,10 @@ public class SnappyCodec extends BaseCodec {
     }
 
     public SnappyCodec(ClassLoader classLoader) {
-        this(new FstCodec(classLoader));
+        this(new MarshallingCodec(classLoader));
     }
     
-    public SnappyCodec(ClassLoader classLoader, SnappyCodec codec) {
+    public SnappyCodec(ClassLoader classLoader, SnappyCodec codec) throws ReflectiveOperationException {
         this(copy(classLoader, codec.innerCodec));
     }
     

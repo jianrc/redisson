@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,15 @@ public class EvictionScheduler {
             task.schedule();
         }
     }
-    
+
+    public void scheduleTimeSeries(String name, String timeoutSetName) {
+        EvictionTask task = new TimeSeriesEvictionTask(name, timeoutSetName, executor);
+        EvictionTask prevTask = tasks.putIfAbsent(name, task);
+        if (prevTask == null) {
+            task.schedule();
+        }
+    }
+
     public void schedule(String name, long shiftInMilliseconds) {
         EvictionTask task = new ScoredSetEvictionTask(name, executor, shiftInMilliseconds);
         EvictionTask prevTask = tasks.putIfAbsent(name, task);
@@ -71,7 +79,10 @@ public class EvictionScheduler {
     }
 
     public void remove(String name) {
-        tasks.remove(name);
+        EvictionTask task = tasks.remove(name);
+        if (task != null) {
+            task.getScheduledFuture().cancel(false);
+        }
     }
     
 }

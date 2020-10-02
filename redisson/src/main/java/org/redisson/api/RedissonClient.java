@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,44 @@
  */
 package org.redisson.api;
 
-import java.util.concurrent.TimeUnit;
-
+import org.redisson.api.redisnode.BaseRedisNodes;
+import org.redisson.api.redisnode.RedisNodes;
 import org.redisson.client.codec.Codec;
 import org.redisson.config.Config;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Main Redisson interface for access
  * to all redisson objects with sync/async interface.
  * 
  * @see RedissonReactiveClient
+ * @see RedissonRxClient
  *
  * @author Nikita Koksharov
  *
  */
 public interface RedissonClient {
+
+    /**
+     * Returns time-series instance by <code>name</code>
+     *
+     * @param <V> type of value
+     * @param name - name of instance
+     * @return RTimeSeries object
+     */
+    <V> RTimeSeries<V> getTimeSeries(String name);
+
+    /**
+     * Returns time-series instance by <code>name</code>
+     * using provided <code>codec</code> for values.
+     *
+     * @param <V> type of value
+     * @param name - name of instance
+     * @param codec - codec for values
+     * @return RTimeSeries object
+     */
+    <V> RTimeSeries<V> getTimeSeries(String name, Codec codec);
 
     /**
      * Returns stream instance by <code>name</code>
@@ -441,9 +464,11 @@ public interface RedissonClient {
     RPermitExpirableSemaphore getPermitExpirableSemaphore(String name);
 
     /**
-     * Returns lock instance by name.
+     * Returns Lock instance by name.
      * <p>
      * Implements a <b>non-fair</b> locking so doesn't guarantees an acquire order by threads.
+     * <p>
+     * To increase reliability during failover, all operations wait for propagation to all Redis slaves.
      *
      * @param name - name of object
      * @return Lock object
@@ -451,9 +476,25 @@ public interface RedissonClient {
     RLock getLock(String name);
 
     /**
-     * Returns lock instance by name.
+     * Returns MultiLock instance associated with specified <code>locks</code>
+     * 
+     * @param locks - collection of locks
+     * @return MultiLock object
+     */
+    RLock getMultiLock(RLock... locks);
+    
+    /*
+     * Use getLock method instead. Returned instance uses Redis Slave synchronization
+     */
+    @Deprecated
+    RLock getRedLock(RLock... locks);
+    
+    /**
+     * Returns Lock instance by name.
      * <p>
      * Implements a <b>fair</b> locking so it guarantees an acquire order by threads.
+     * <p>
+     * To increase reliability during failover, all operations wait for propagation to all Redis slaves.
      * 
      * @param name - name of object
      * @return Lock object
@@ -461,7 +502,9 @@ public interface RedissonClient {
     RLock getFairLock(String name);
     
     /**
-     * Returns readWriteLock instance by name.
+     * Returns ReadWriteLock instance by name.
+     * <p>
+     * To increase reliability during failover, all operations wait for propagation to all Redis slaves.
      *
      * @param name - name of object
      * @return Lock object
@@ -596,7 +639,27 @@ public interface RedissonClient {
      * @return queue object
      */
     <V> RQueue<V> getQueue(String name);
-    
+
+    /**
+     * Returns transfer queue instance by name.
+     *
+     * @param <V> type of values
+     * @param name - name of object
+     * @return TransferQueue object
+     */
+    <V> RTransferQueue<V> getTransferQueue(String name);
+
+    /**
+     * Returns transfer queue instance by name
+     * using provided codec for queue objects.
+     *
+     * @param <V> type of values
+     * @param name - name of object
+     * @param codec - code for values
+     * @return TransferQueue object
+     */
+    <V> RTransferQueue<V> getTransferQueue(String name, Codec codec);
+
     /**
      * Returns unbounded delayed queue instance by name.
      * <p>
@@ -619,6 +682,25 @@ public interface RedissonClient {
      * @return Queue object
      */
     <V> RQueue<V> getQueue(String name, Codec codec);
+    
+    /**
+     * Returns RingBuffer based queue.
+     * 
+     * @param <V> value type
+     * @param name - name of object
+     * @return RingBuffer object
+     */
+    <V> RRingBuffer<V> getRingBuffer(String name);
+    
+    /**
+     * Returns RingBuffer based queue.
+     * 
+     * @param <V> value type
+     * @param name - name of object
+     * @param codec - codec for values
+     * @return RingBuffer object
+     */
+    <V> RRingBuffer<V> getRingBuffer(String name, Codec codec);
 
     /**
      * Returns priority unbounded queue instance by name.
@@ -887,22 +969,7 @@ public interface RedissonClient {
      * @return ScheduledExecutorService object
      */
     RScheduledExecutorService getExecutorService(String name, ExecutorOptions options);
-    
-    /**
-     * Returns ScheduledExecutorService by name 
-     * using provided codec for task, response and request serialization
-     * 
-     * Please use getExecutorService(String name, Codec codec) method instead.
-     * 
-     * @deprecated - use {@link #getExecutorService(String, Codec)} instead.
-     * 
-     * @param name - name of object
-     * @param codec - codec for task, response and request
-     * @return ScheduledExecutorService object
-     */
-    @Deprecated
-    RScheduledExecutorService getExecutorService(Codec codec, String name);
-    
+
     /**
      * Returns ScheduledExecutorService by name 
      * using provided codec for task, response and request serialization
@@ -1035,17 +1102,29 @@ public interface RedissonClient {
     Config getConfig();
 
     /**
-     * Get Redis nodes group for server operations
+     * Returns API to manage Redis nodes
      *
-     * @return NodesGroup object
+     * @see RedisNodes#CLUSTER
+     * @see RedisNodes#MASTER_SLAVE
+     * @see RedisNodes#SENTINEL_MASTER_SLAVE
+     * @see RedisNodes#SINGLE
+     *
+     * @param nodes Redis nodes API class
+     * @param <T> type of Redis nodes API
+     * @return Redis nodes API object
      */
+    <T extends BaseRedisNodes> T getRedisNodes(RedisNodes<T> nodes);
+
+    /*
+     * Use getRedisNodes() method instead
+     */
+    @Deprecated
     NodesGroup<Node> getNodesGroup();
 
-    /**
-     * Get Redis cluster nodes group for server operations
-     *
-     * @return ClusterNodesGroup object
+    /*
+     * Use getRedisNodes() method instead
      */
+    @Deprecated
     ClusterNodesGroup getClusterNodesGroup();
 
     /**
@@ -1063,5 +1142,12 @@ public interface RedissonClient {
      * or was shutdown {@link #isShutdown()} already.
      */
     boolean isShuttingDown();
+
+    /**
+     * Returns id of this Redisson instance
+     * 
+     * @return id
+     */
+    String getId();
 
 }

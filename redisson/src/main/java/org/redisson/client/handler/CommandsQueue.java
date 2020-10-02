@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,28 +15,18 @@
  */
 package org.redisson.client.handler;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Queue;
-import java.util.regex.Pattern;
-
+import io.netty.channel.*;
+import io.netty.util.AttributeKey;
 import org.redisson.client.ChannelName;
 import org.redisson.client.WriteRedisConnectionException;
 import org.redisson.client.protocol.CommandData;
 import org.redisson.client.protocol.QueueCommand;
 import org.redisson.client.protocol.QueueCommandHolder;
 import org.redisson.misc.LogHelper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
-import io.netty.util.AttributeKey;
-import io.netty.util.internal.PlatformDependent;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  *
@@ -46,21 +36,13 @@ import io.netty.util.internal.PlatformDependent;
  */
 public class CommandsQueue extends ChannelDuplexHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(CommandsQueue.class);
-
-    private static final Pattern IGNORABLE_ERROR_MESSAGE = Pattern.compile(
-            "^.*(?:connection.*(?:reset|closed|abort|broken)|broken.*pipe).*$", Pattern.CASE_INSENSITIVE);
-    
     public static final AttributeKey<QueueCommand> CURRENT_COMMAND = AttributeKey.valueOf("promise");
 
-    private final Queue<QueueCommandHolder> queue = PlatformDependent.newMpscQueue();
+    private final Queue<QueueCommandHolder> queue = new ConcurrentLinkedQueue<>();
 
-    private final ChannelFutureListener listener = new ChannelFutureListener() {
-        @Override
-        public void operationComplete(ChannelFuture future) throws Exception {
-            if (!future.isSuccess() && future.channel().isActive()) {
-                sendNextCommand(future.channel());
-            }
+    private final ChannelFutureListener listener = future -> {
+        if (!future.isSuccess() && future.channel().isActive()) {
+            sendNextCommand(future.channel());
         }
     };
 
@@ -133,24 +115,4 @@ public class CommandsQueue extends ChannelDuplexHandler {
         }
     }
 
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        if (cause instanceof IOException) {
-            String message = String.valueOf(cause.getMessage()).toLowerCase();
-            if (IGNORABLE_ERROR_MESSAGE.matcher(message).matches()) {
-                return;
-            }
-        }
-
-//        QueueCommand command = ctx.channel().attr(CommandsQueue.CURRENT_COMMAND).get();
-//        if (command != null) {
-//            if (!command.tryFailure(cause)) {
-//                log.error("Exception occured. Channel: " + ctx.channel() + " Command: " + command, cause);
-//            }
-//            sendNextCommand(ctx.channel());
-//            return;
-//        }
-        log.error("Exception occured. Channel: " + ctx.channel(), cause);
-   }
-    
 }

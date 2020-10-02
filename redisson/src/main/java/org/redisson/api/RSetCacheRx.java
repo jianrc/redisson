@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.redisson.api;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import io.reactivex.Flowable;
+import io.reactivex.Single;
 
 /**
  * RxJava2 interface for RSetCache object
@@ -80,7 +80,7 @@ public interface RSetCacheRx<V> extends RCollectionRx<V>, RDestroyable {
      * @return <code>true</code> if value has been added. <code>false</code>
      *          if value already been in collection.
      */
-    Flowable<Boolean> add(V value, long ttl, TimeUnit unit);
+    Single<Boolean> add(V value, long ttl, TimeUnit unit);
 
     /**
      * Returns the number of elements in cache.
@@ -89,13 +89,13 @@ public interface RSetCacheRx<V> extends RCollectionRx<V>, RDestroyable {
      *
      */
     @Override
-    Flowable<Integer> size();
+    Single<Integer> size();
 
     /**
      * Read all elements at once
      *
      * @return values
      */
-    Flowable<Set<V>> readAll();
+    Single<Set<V>> readAll();
     
 }

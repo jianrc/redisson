@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
  */
 package org.redisson.api;
 
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Distributed implementation of {@link java.util.concurrent.ExecutorService}
@@ -32,7 +34,7 @@ public interface RExecutorService extends ExecutorService, RExecutorServiceAsync
     String MAPREDUCE_NAME = "redisson_mapreduce";
     
     /**
-     * Submits a value-returning task for execution synchronously and returns a
+     * Synchronously submits a value-returning task for execution asynchronously and returns a
      * Future representing the pending results of the task. The
      * Future's {@code get} method will return the task's result upon
      * successful completion.
@@ -43,9 +45,24 @@ public interface RExecutorService extends ExecutorService, RExecutorServiceAsync
      */
     @Override
     <T> RExecutorFuture<T> submit(Callable<T> task);
-    
+
     /**
-     * Submits tasks batch for execution synchronously. 
+     * Synchronously submits a value-returning task with defined <code>timeToLive</code> parameter
+     * for execution asynchronously. Returns a Future representing the pending
+     * results of the task. The Future's {@code get} method will return the
+     * task's result upon successful completion.
+     *
+     * @param task the task to submit
+     * @param timeToLive - time to live interval
+     * @param timeUnit - unit of time to live interval
+     * @param <T> the type of the task's result
+     * @return a Future representing pending completion of the task
+     */
+    <T> RExecutorFuture<T> submit(Callable<T> task, long timeToLive, TimeUnit timeUnit);
+
+
+    /**
+     * Synchronously submits tasks batch for execution asynchronously.
      * All tasks are stored to executor request queue atomically, 
      * if case of any error none of tasks will be added.
      * 
@@ -55,8 +72,8 @@ public interface RExecutorService extends ExecutorService, RExecutorServiceAsync
     RExecutorBatchFuture submit(Callable<?>...tasks);
     
     /**
-     * Submits a Runnable task for execution and returns a Future
-     * representing that task. The Future's {@code get} method will
+     * Synchronously submits a Runnable task for execution asynchronously
+     * and returns a RExecutorFuture representing that task. The Future's {@code get} method will
      * return the given result upon successful completion.
      *
      * @param task the task to submit
@@ -68,8 +85,8 @@ public interface RExecutorService extends ExecutorService, RExecutorServiceAsync
     <T> RExecutorFuture<T> submit(Runnable task, T result);;
 
     /**
-     * Submits a Runnable task for execution and returns a Future
-     * representing that task. The Future's {@code get} method will
+     * Synchronously submits a Runnable task for execution asynchronously.
+     * Returns a RExecutorFuture representing task completion. The Future's {@code get} method will
      * return {@code null} upon <em>successful</em> completion.
      *
      * @param task the task to submit
@@ -79,7 +96,20 @@ public interface RExecutorService extends ExecutorService, RExecutorServiceAsync
     RExecutorFuture<?> submit(Runnable task);
 
     /**
-     * Submits tasks batch for execution synchronously. 
+     * Synchronously submits a task with defined <code>timeToLive</code> parameter
+     * for execution asynchronously. Returns a Future representing task completion.
+     * The Future's {@code get} method will return the
+     * task's result upon successful completion.
+     *
+     * @param task the task to submit
+     * @param timeToLive - time to live interval
+     * @param timeUnit - unit of time to live interval
+     * @return a Future representing pending completion of the task
+     */
+    RExecutorFuture<?> submit(Runnable task, long timeToLive, TimeUnit timeUnit);
+
+    /**
+     * Synchronously submits tasks batch for execution asynchronously.
      * All tasks are stored to executor request queue atomically, 
      * if case of any error none of tasks will be added.
      * 
@@ -102,30 +132,59 @@ public interface RExecutorService extends ExecutorService, RExecutorServiceAsync
      */
     boolean delete();
 
-    /**
-     * Register workers
+    /*
+     * Use {@link #registerWorkers(WorkerOptions)} setting instead
      * 
-     * @param workers - workers amount
      */
+    @Deprecated
     void registerWorkers(int workers);
-    
-    /**
-     * Register workers with custom executor
+
+    /*
+     * Use {@link #registerWorkers(WorkerOptions)} setting instead
      * 
-     * @param workers - workers amount
-     * @param executor - executor instance
      */
+    @Deprecated
     void registerWorkers(int workers, ExecutorService executor);
 
     /**
-     * Returns active worker groups
+     * Register workers
      * 
-     * @return active worker groups count
+     * @param options - worker options
+     */
+    void registerWorkers(WorkerOptions options);
+
+    /**
+     * Returns amount of tasks awaiting for execution and/or currently in execution.
+     *
+     * @return amount of tasks
+     */
+    int getTaskCount();
+
+    /**
+     * Returns active workers amount available for tasks execution.
+     * 
+     * @return workers amount
      */
     int countActiveWorkers();
-    
+
     /**
-     * Cancels task by id
+     * Returns <code>true</code> if this Executor Service has task
+     * by <code>taskId</code> awaiting for execution and/or currently in execution
+     *
+     * @param taskId - id of task
+     * @return <code>true</code> if this Executor Service has task
+     */
+    boolean hasTask(String taskId);
+
+    /**
+     * Returns list of task ids awaiting for execution and/or currently in execution.
+     *
+     * @return task ids
+     */
+    Set<String> getTaskIds();
+
+    /**
+     * Cancel task by id
      * 
      * @see RExecutorFuture#getTaskId()
      * 

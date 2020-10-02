@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,67 +15,12 @@
  */
 package org.redisson.rx;
 
-import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
-
-import org.redisson.RedissonAtomicDouble;
-import org.redisson.RedissonAtomicLong;
-import org.redisson.RedissonBitSet;
-import org.redisson.RedissonBlockingDeque;
-import org.redisson.RedissonBlockingQueue;
-import org.redisson.RedissonBucket;
-import org.redisson.RedissonDeque;
-import org.redisson.RedissonGeo;
-import org.redisson.RedissonHyperLogLog;
-import org.redisson.RedissonKeys;
-import org.redisson.RedissonLexSortedSet;
-import org.redisson.RedissonList;
-import org.redisson.RedissonListMultimap;
-import org.redisson.RedissonMap;
-import org.redisson.RedissonMapCache;
-import org.redisson.RedissonQueue;
-import org.redisson.RedissonScoredSortedSet;
-import org.redisson.RedissonScript;
-import org.redisson.RedissonSet;
-import org.redisson.RedissonSetCache;
-import org.redisson.RedissonSetMultimap;
-import org.redisson.RedissonStream;
-import org.redisson.RedissonTopic;
-import org.redisson.api.BatchOptions;
-import org.redisson.api.BatchResult;
-import org.redisson.api.RAtomicDoubleRx;
-import org.redisson.api.RAtomicLongRx;
-import org.redisson.api.RBatchRx;
-import org.redisson.api.RBitSetRx;
-import org.redisson.api.RBlockingDequeRx;
-import org.redisson.api.RBlockingQueueRx;
-import org.redisson.api.RBucketRx;
-import org.redisson.api.RDequeRx;
-import org.redisson.api.RFuture;
-import org.redisson.api.RGeoRx;
-import org.redisson.api.RHyperLogLogRx;
-import org.redisson.api.RKeysRx;
-import org.redisson.api.RLexSortedSetRx;
-import org.redisson.api.RListMultimapRx;
-import org.redisson.api.RListRx;
-import org.redisson.api.RMapCache;
-import org.redisson.api.RMapCacheRx;
-import org.redisson.api.RMapRx;
-import org.redisson.api.RQueueRx;
-import org.redisson.api.RScoredSortedSetRx;
-import org.redisson.api.RScriptRx;
-import org.redisson.api.RSetCache;
-import org.redisson.api.RSetCacheRx;
-import org.redisson.api.RSetMultimapRx;
-import org.redisson.api.RSetRx;
-import org.redisson.api.RStreamRx;
-import org.redisson.api.RTopicRx;
-import org.redisson.api.RedissonRxClient;
+import io.reactivex.Maybe;
+import org.redisson.*;
+import org.redisson.api.*;
 import org.redisson.client.codec.Codec;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.eviction.EvictionScheduler;
-
-import io.reactivex.Flowable;
 
 /**
  * 
@@ -86,12 +31,12 @@ public class RedissonBatchRx implements RBatchRx {
 
     private final EvictionScheduler evictionScheduler;
     private final CommandRxBatchService executorService;
-    private final BatchOptions options;
-    
-    public RedissonBatchRx(EvictionScheduler evictionScheduler, ConnectionManager connectionManager, BatchOptions options) {
+    private final CommandRxExecutor commandExecutor;
+
+    public RedissonBatchRx(EvictionScheduler evictionScheduler, ConnectionManager connectionManager, CommandRxExecutor commandExecutor, BatchOptions options) {
         this.evictionScheduler = evictionScheduler;
-        this.executorService = new CommandRxBatchService(connectionManager);
-        this.options = options;
+        this.executorService = new CommandRxBatchService(connectionManager, options);
+        this.commandExecutor = commandExecutor;
     }
 
     @Override
@@ -140,28 +85,28 @@ public class RedissonBatchRx implements RBatchRx {
 
     @Override
     public <K, V> RMapRx<K, V> getMap(String name) {
-        RedissonMap<K, V> map = new RedissonMap<K, V>(executorService, name, null, null);
+        RedissonMap<K, V> map = new RedissonMap<K, V>(executorService, name, null, null, null);
         return RxProxyBuilder.create(executorService, map, 
                 new RedissonMapRx<K, V>(map, null), RMapRx.class);
     }
 
     @Override
     public <K, V> RMapRx<K, V> getMap(String name, Codec codec) {
-        RedissonMap<K, V> map = new RedissonMap<K, V>(codec, executorService, name, null, null);
+        RedissonMap<K, V> map = new RedissonMap<K, V>(codec, executorService, name, null, null, null);
         return RxProxyBuilder.create(executorService, map, 
                 new RedissonMapRx<K, V>(map, null), RMapRx.class);
     }
 
     @Override
     public <K, V> RMapCacheRx<K, V> getMapCache(String name, Codec codec) {
-        RMapCache<K, V> map = new RedissonMapCache<K, V>(codec, evictionScheduler, executorService, name, null, null);
+        RMapCache<K, V> map = new RedissonMapCache<K, V>(codec, evictionScheduler, executorService, name, null, null, null);
         return RxProxyBuilder.create(executorService, map, 
                 new RedissonMapCacheRx<K, V>(map), RMapCacheRx.class);
     }
 
     @Override
     public <K, V> RMapCacheRx<K, V> getMapCache(String name) {
-        RMapCache<K, V> map = new RedissonMapCache<K, V>(evictionScheduler, executorService, name, null, null);
+        RMapCache<K, V> map = new RedissonMapCache<K, V>(evictionScheduler, executorService, name, null, null, null);
         return RxProxyBuilder.create(executorService, map, 
                 new RedissonMapCacheRx<K, V>(map), RMapCacheRx.class);
     }
@@ -294,50 +239,10 @@ public class RedissonBatchRx implements RBatchRx {
     }
 
     @Override
-    public Flowable<BatchResult<?>> execute() {
-        return executorService.flowable(new Callable<RFuture<BatchResult<?>>>() {
-            @Override
-            public RFuture<BatchResult<?>> call() {
-                return executorService.executeAsync(options);
-            }
-        });
+    public Maybe<BatchResult<?>> execute() {
+        return commandExecutor.flowable(() -> executorService.executeAsync()).singleElement();
     }
     
-    public RBatchRx atomic() {
-        options.atomic();
-        return this;
-    }
-    
-    @Override
-    public RBatchRx syncSlaves(int slaves, long timeout, TimeUnit unit) {
-        options.syncSlaves(slaves, timeout, unit);
-        return this;
-    }
-    
-    @Override
-    public RBatchRx skipResult() {
-        options.skipResult();
-        return this;
-    }
-    
-    @Override
-    public RBatchRx retryAttempts(int retryAttempts) {
-        options.retryAttempts(retryAttempts);
-        return this;
-    }
-    
-    @Override
-    public RBatchRx retryInterval(long retryInterval, TimeUnit unit) {
-        options.retryInterval(retryInterval, unit);
-        return this;
-    }
-    
-    @Override
-    public RBatchRx timeout(long timeout, TimeUnit unit) {
-        options.responseTimeout(timeout, unit);
-        return this;
-    }
-
     public void enableRedissonReferenceSupport(RedissonRxClient redissonRx) {
         this.executorService.enableRedissonReferenceSupport(redissonRx);
     }

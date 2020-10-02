@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package org.redisson.config;
 
-import java.net.URI;
+import java.net.URL;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  *
  * @param <T> config type
  */
-class BaseConfig<T extends BaseConfig<T>> {
+public class BaseConfig<T extends BaseConfig<T>> {
     
     private static final Logger log = LoggerFactory.getLogger("config");
 
@@ -38,13 +38,6 @@ class BaseConfig<T extends BaseConfig<T>> {
      *
      */
     private int idleConnectionTimeout = 10000;
-
-    /**
-     * Ping timeout used in <code>Node.ping</code> and <code>Node.pingAll<code> operation.
-     * Value in milliseconds.
-     *
-     */
-    private int pingTimeout = 1000;
 
     /**
      * Timeout during connecting to any Redis server.
@@ -69,6 +62,8 @@ class BaseConfig<T extends BaseConfig<T>> {
      */
     private String password;
 
+    private String username;
+
     /**
      * Subscriptions per Redis connection limit
      */
@@ -83,15 +78,15 @@ class BaseConfig<T extends BaseConfig<T>> {
     
     private SslProvider sslProvider = SslProvider.JDK;
     
-    private URI sslTruststore;
+    private URL sslTruststore;
     
     private String sslTruststorePassword;
     
-    private URI sslKeystore;
+    private URL sslKeystore;
     
     private String sslKeystorePassword;
 
-    private int pingConnectionInterval;
+    private int pingConnectionInterval = 30000;
 
     private boolean keepAlive;
     
@@ -103,12 +98,12 @@ class BaseConfig<T extends BaseConfig<T>> {
 
     BaseConfig(T config) {
         setPassword(config.getPassword());
+        setUsername(config.getUsername());
         setSubscriptionsPerConnection(config.getSubscriptionsPerConnection());
         setRetryAttempts(config.getRetryAttempts());
         setRetryInterval(config.getRetryInterval());
         setTimeout(config.getTimeout());
         setClientName(config.getClientName());
-        setPingTimeout(config.getPingTimeout());
         setConnectTimeout(config.getConnectTimeout());
         setIdleConnectionTimeout(config.getIdleConnectionTimeout());
         setSslEnableEndpointIdentification(config.isSslEnableEndpointIdentification());
@@ -124,7 +119,8 @@ class BaseConfig<T extends BaseConfig<T>> {
 
     /**
      * Subscriptions per Redis connection limit
-     * Default is 5
+     * <p>
+     * Default is <code>5</code>
      *
      * @param subscriptionsPerConnection amount
      * @return config
@@ -139,7 +135,8 @@ class BaseConfig<T extends BaseConfig<T>> {
     }
 
     /**
-     * Password for Redis authentication. Should be null if not needed
+     * Password for Redis authentication. Should be null if not needed.
+     * <p>
      * Default is <code>null</code>
      *
      * @param password for connection
@@ -152,6 +149,25 @@ class BaseConfig<T extends BaseConfig<T>> {
 
     public String getPassword() {
         return password;
+    }
+
+    /**
+     * Username for Redis authentication. Should be null if not needed
+     * <p>
+     * Default is <code>null</code>
+     * <p>
+     * Requires Redis 6.0+
+     *
+     * @param username for connection
+     * @return config
+     */
+    public T setUsername(String username) {
+        this.username = username;
+        return (T) this;
+    }
+
+    public String getUsername() {
+        return username;
     }
 
     /**
@@ -176,11 +192,9 @@ class BaseConfig<T extends BaseConfig<T>> {
     /**
      * Defines time interval for another one attempt send Redis command 
      * if it hasn't been sent already.
-     * 
      * <p>
      * Default is <code>1500</code> milliseconds
      *
-     * @see retryAttempts
      * @param retryInterval - time in milliseconds
      * @return config
      */
@@ -213,6 +227,8 @@ class BaseConfig<T extends BaseConfig<T>> {
     /**
      * Setup connection name during connection init
      * via CLIENT SETNAME command
+     * <p>
+     * Default is <code>null</code>
      *
      * @param clientName - name of client
      * @return config
@@ -224,16 +240,6 @@ class BaseConfig<T extends BaseConfig<T>> {
 
     public String getClientName() {
         return clientName;
-    }
-
-    @Deprecated
-    public T setPingTimeout(int pingTimeout) {
-        this.pingTimeout = pingTimeout;
-        return (T) this;
-    }
-
-    public int getPingTimeout() {
-        return pingTimeout;
     }
 
     /**
@@ -257,6 +263,8 @@ class BaseConfig<T extends BaseConfig<T>> {
      * If pooled connection not used for a <code>timeout</code> time
      * and current connections amount bigger than minimum idle connections pool size,
      * then it will closed and removed from pool.
+     * <p>
+     * Default is <code>10000</code> milliseconds.
      *
      * @param idleConnectionTimeout - timeout in milliseconds
      * @return config
@@ -270,24 +278,6 @@ class BaseConfig<T extends BaseConfig<T>> {
         return idleConnectionTimeout;
     }
 
-    /*
-     * Use setFailedSlaveReconnectionInterval instead
-     */
-    @Deprecated
-    public T setReconnectionTimeout(int slaveRetryTimeout) {
-        log.warn("'reconnectionTimeout' setting in unavailable. Please use 'failedSlaveReconnectionInterval' setting instead!");
-        return (T) this;
-    }
-
-    /*
-     * Use setFailedSlaveCheckInterval instead
-     */
-    @Deprecated
-    public T setFailedAttempts(int slaveFailedAttempts) {
-        log.warn("'failedAttempts' setting in unavailable. Please use 'failedSlaveCheckInterval' setting instead!");
-        return (T) this;
-    }
-    
     public boolean isSslEnableEndpointIdentification() {
         return sslEnableEndpointIdentification;
     }
@@ -312,7 +302,7 @@ class BaseConfig<T extends BaseConfig<T>> {
     /**
      * Defines SSL provider used to handle SSL connections.
      * <p>
-     * Default is JDK
+     * Default is <code>JDK</code>
      * 
      * @param sslProvider - ssl provider 
      * @return config
@@ -322,17 +312,19 @@ class BaseConfig<T extends BaseConfig<T>> {
         return (T) this;
     }
 
-    public URI getSslTruststore() {
+    public URL getSslTruststore() {
         return sslTruststore;
     }
 
     /**
      * Defines path to SSL truststore 
-     * 
+     * <p>
+     * Default is <code>null</code>
+     *
      * @param sslTruststore - path
      * @return config
      */
-    public T setSslTruststore(URI sslTruststore) {
+    public T setSslTruststore(URL sslTruststore) {
         this.sslTruststore = sslTruststore;
         return (T) this;
     }
@@ -343,7 +335,9 @@ class BaseConfig<T extends BaseConfig<T>> {
 
     /**
      * Defines password for SSL truststore
-     * 
+     * <p>
+     * Default is <code>null</code>
+     *
      * @param sslTruststorePassword - password
      * @return config
      */
@@ -352,17 +346,19 @@ class BaseConfig<T extends BaseConfig<T>> {
         return (T) this;
     }
 
-    public URI getSslKeystore() {
+    public URL getSslKeystore() {
         return sslKeystore;
     }
 
     /**
      * Defines path to SSL keystore
-     * 
+     * <p>
+     * Default is <code>null</code>
+     *
      * @param sslKeystore - path to keystore
      * @return config
      */
-    public T setSslKeystore(URI sslKeystore) {
+    public T setSslKeystore(URL sslKeystore) {
         this.sslKeystore = sslKeystore;
         return (T) this;
     }
@@ -373,7 +369,9 @@ class BaseConfig<T extends BaseConfig<T>> {
 
     /**
      * Defines password for SSL keystore
-     * 
+     * <p>
+     * Default is <code>null</code>
+     *
      * @param sslKeystorePassword - password
      * @return config
      */
@@ -390,7 +388,7 @@ class BaseConfig<T extends BaseConfig<T>> {
      * Defines PING command sending interval per connection to Redis.
      * <code>0</code> means disable.
      * <p>
-     * Default is <code>0</code>
+     * Default is <code>30000</code>
      * 
      * @param pingConnectionInterval - time in milliseconds
      * @return config

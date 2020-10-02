@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,19 +19,34 @@ import java.util.concurrent.TimeUnit;
 
 import org.redisson.client.codec.Codec;
 
-import io.reactivex.Flowable;
+import io.reactivex.Completable;
+import io.reactivex.Single;
 
 /**
- * Base interface for all Redisson objects
+ * Base RxJava2 interface for all Redisson objects
  *
  * @author Nikita Koksharov
  *
  */
 public interface RObjectRx {
 
+    /**
+     * Returns number of seconds spent since last write or read operation over this object.
+     *
+     * @return number of seconds
+     */
+    Single<Long> getIdleTime();
+
     String getName();
     
     Codec getCodec();
+    
+    /**
+     * Returns bytes amount used by object in Redis memory. 
+     * 
+     * @return size in bytes
+     */
+    Single<Long> sizeInMemory();
     
     /**
      * Restores object using its state returned by {@link #dump()} method.
@@ -39,7 +54,7 @@ public interface RObjectRx {
      * @param state - state of object
      * @return void
      */
-    Flowable<Void> restore(byte[] state);
+    Completable restore(byte[] state);
     
     /**
      * Restores object using its state returned by {@link #dump()} method and set time to live for it.
@@ -49,7 +64,7 @@ public interface RObjectRx {
      * @param timeUnit - time unit
      * @return void
      */
-    Flowable<Void> restore(byte[] state, long timeToLive, TimeUnit timeUnit);
+    Completable restore(byte[] state, long timeToLive, TimeUnit timeUnit);
     
     /**
      * Restores and replaces object if it already exists.
@@ -57,7 +72,7 @@ public interface RObjectRx {
      * @param state - state of the object
      * @return void
      */
-    Flowable<Void> restoreAndReplace(byte[] state);
+    Completable restoreAndReplace(byte[] state);
     
     /**
      * Restores and replaces object if it already exists and set time to live for it.
@@ -67,21 +82,21 @@ public interface RObjectRx {
      * @param timeUnit - time unit
      * @return void
      */
-    Flowable<Void> restoreAndReplace(byte[] state, long timeToLive, TimeUnit timeUnit);
+    Completable restoreAndReplace(byte[] state, long timeToLive, TimeUnit timeUnit);
 
     /**
      * Returns dump of object
      * 
      * @return dump
      */
-    Flowable<byte[]> dump();
+    Single<byte[]> dump();
     
     /**
      * Update the last access time of an object. 
      * 
      * @return <code>true</code> if object was touched else <code>false</code>
      */
-    Flowable<Boolean> touch();    
+    Single<Boolean> touch();    
     
     /**
      * Delete the objects.
@@ -91,7 +106,7 @@ public interface RObjectRx {
      * 
      * @return <code>true</code> if it was exist and deleted else <code>false</code>
      */
-    Flowable<Boolean> unlink();
+    Single<Boolean> unlink();
     
     /**
      * Copy object from source Redis instance to destination Redis instance
@@ -102,7 +117,7 @@ public interface RObjectRx {
      * @param timeout - maximum idle time in any moment of the communication with the destination instance in milliseconds
      * @return void
      */
-    Flowable<Void> copy(String host, int port, int database, long timeout);
+    Completable copy(String host, int port, int database, long timeout);
     
     /**
      * Transfer a object from a source Redis instance to a destination Redis instance
@@ -114,7 +129,7 @@ public interface RObjectRx {
      * @param timeout - maximum idle time in any moment of the communication with the destination instance in milliseconds
      * @return void
      */
-    Flowable<Void> migrate(String host, int port, int database, long timeout);
+    Completable migrate(String host, int port, int database, long timeout);
 
     /**
      * Move object to another database in  mode
@@ -122,14 +137,14 @@ public interface RObjectRx {
      * @param database - number of Redis database
      * @return <code>true</code> if key was moved <code>false</code> if not
      */
-    Flowable<Boolean> move(int database);
+    Single<Boolean> move(int database);
 
     /**
      * Delete object in  mode
      *
      * @return <code>true</code> if object was deleted <code>false</code> if not
      */
-    Flowable<Boolean> delete();
+    Single<Boolean> delete();
 
     /**
      * Rename current object key to <code>newName</code>
@@ -138,7 +153,7 @@ public interface RObjectRx {
      * @param newName - new name of object
      * @return void
      */
-    Flowable<Void> rename(String newName);
+    Completable rename(String newName);
 
     /**
      * Rename current object key to <code>newName</code>
@@ -147,13 +162,31 @@ public interface RObjectRx {
      * @param newName - new name of object
      * @return <code>true</code> if object has been renamed successfully and <code>false</code> otherwise
      */
-    Flowable<Boolean> renamenx(String newName);
+    Single<Boolean> renamenx(String newName);
 
     /**
      * Check object existence
      *
      * @return <code>true</code> if object exists and <code>false</code> otherwise
      */
-    Flowable<Boolean> isExists();
+    Single<Boolean> isExists();
+
+    /**
+     * Adds object event listener
+     * 
+     * @see org.redisson.api.ExpiredObjectListener
+     * @see org.redisson.api.DeletedObjectListener
+     * 
+     * @param listener - object event listener
+     * @return listener id
+     */
+    Single<Integer> addListener(ObjectListener listener);
+
+    /**
+     * Removes object event listener
+     * 
+     * @param listenerId - listener id
+     */
+    Completable removeListener(int listenerId);
 
 }

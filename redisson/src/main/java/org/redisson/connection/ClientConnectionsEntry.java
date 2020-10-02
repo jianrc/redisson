@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +15,19 @@
  */
 package org.redisson.connection;
 
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicLong;
-
 import org.redisson.api.NodeType;
 import org.redisson.api.RFuture;
 import org.redisson.client.RedisClient;
 import org.redisson.client.RedisConnection;
 import org.redisson.client.RedisPubSubConnection;
-import org.redisson.config.MasterSlaveServersConfig;
 import org.redisson.config.ReadMode;
 import org.redisson.pubsub.AsyncSemaphore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 
@@ -39,22 +38,21 @@ public class ClientConnectionsEntry {
 
     final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final Queue<RedisPubSubConnection> allSubscribeConnections = new ConcurrentLinkedQueue<RedisPubSubConnection>();
-    private final Queue<RedisPubSubConnection> freeSubscribeConnections = new ConcurrentLinkedQueue<RedisPubSubConnection>();
+    private final Queue<RedisPubSubConnection> allSubscribeConnections = new ConcurrentLinkedQueue<>();
+    private final Queue<RedisPubSubConnection> freeSubscribeConnections = new ConcurrentLinkedQueue<>();
     private final AsyncSemaphore freeSubscribeConnectionsCounter;
 
-    private final Queue<RedisConnection> allConnections = new ConcurrentLinkedQueue<RedisConnection>();
-    private final Queue<RedisConnection> freeConnections = new ConcurrentLinkedQueue<RedisConnection>();
+    private final Queue<RedisConnection> allConnections = new ConcurrentLinkedQueue<>();
+    private final Queue<RedisConnection> freeConnections = new ConcurrentLinkedQueue<>();
     private final AsyncSemaphore freeConnectionsCounter;
 
     public enum FreezeReason {MANAGER, RECONNECT, SYSTEM}
 
-    private volatile boolean freezed;
-    private FreezeReason freezeReason;
+    private volatile FreezeReason freezeReason;
     final RedisClient client;
 
     private volatile NodeType nodeType;
-    private ConnectionManager connectionManager;
+    private final ConnectionManager connectionManager;
 
     private final AtomicLong firstFailTime = new AtomicLong(0);
 
@@ -67,13 +65,21 @@ public class ClientConnectionsEntry {
         this.freeSubscribeConnectionsCounter = new AsyncSemaphore(subscribePoolMaxSize);
 
         if (subscribePoolMaxSize > 0) {
-            connectionManager.getConnectionWatcher().add(subscribePoolMinSize, subscribePoolMaxSize, freeSubscribeConnections, freeSubscribeConnectionsCounter);
+            connectionManager.getConnectionWatcher().add(subscribePoolMinSize, subscribePoolMaxSize, freeSubscribeConnections, freeSubscribeConnectionsCounter, c -> {
+                freeSubscribeConnections.remove(c);
+                return allSubscribeConnections.remove(c);
+            });
         }
-        connectionManager.getConnectionWatcher().add(poolMinSize, poolMaxSize, freeConnections, freeConnectionsCounter);
+        connectionManager.getConnectionWatcher().add(poolMinSize, poolMaxSize, freeConnections, freeConnectionsCounter, c -> {
+                freeConnections.remove(c);
+                return allConnections.remove(c);
+            });
     }
     
     public boolean isMasterForRead() {
-        return getFreezeReason() == FreezeReason.SYSTEM && getConfig().getReadMode() == ReadMode.MASTER_SLAVE && getNodeType() == NodeType.MASTER;
+        return getFreezeReason() == FreezeReason.SYSTEM
+                        && connectionManager.getConfig().getReadMode() == ReadMode.MASTER_SLAVE
+                            && getNodeType() == NodeType.MASTER;
     }
     
     public void setNodeType(NodeType nodeType) {
@@ -103,7 +109,7 @@ public class ClientConnectionsEntry {
     }
 
     public boolean isFreezed() {
-        return freezed;
+        return freezeReason != null;
     }
 
     public void setFreezeReason(FreezeReason freezeReason) {
@@ -114,10 +120,6 @@ public class ClientConnectionsEntry {
         return freezeReason;
     }
 
-    public void setFreezed(boolean freezed) {
-        this.freezed = freezed;
-    }
-    
     public void reset() {
         freeConnectionsCounter.removeListeners();
         freeSubscribeConnectionsCounter.removeListeners();
@@ -144,6 +146,10 @@ public class ClientConnectionsEntry {
     }
 
     public void releaseConnection(RedisConnection connection) {
+        if (connection.isClosed()) {
+            return;
+        }
+
         if (client != connection.getRedisClient()) {
             connection.closeAsync();
             return;
@@ -189,10 +195,6 @@ public class ClientConnectionsEntry {
         connectionManager.getConnectionEventsHub().fireConnect(conn.getRedisClient().getAddr());
     }
 
-    public MasterSlaveServersConfig getConfig() {
-        return connectionManager.getConfig();
-    }
-
     public RFuture<RedisPubSubConnection> connectPubSub() {
         RFuture<RedisPubSubConnection> future = client.connectPubSubAsync();
         future.onComplete((res, e) -> {
@@ -222,6 +224,10 @@ public class ClientConnectionsEntry {
     }
 
     public void releaseSubscribeConnection(RedisPubSubConnection connection) {
+        if (connection.isClosed()) {
+            return;
+        }
+
         if (client != connection.getRedisClient()) {
             connection.closeAsync();
             return;
@@ -239,19 +245,12 @@ public class ClientConnectionsEntry {
         freeSubscribeConnectionsCounter.release();
     }
 
-    public void freezeMaster(FreezeReason reason) {
-        synchronized (this) {
-            setFreezed(true);
-            setFreezeReason(reason);
-        }
-    }
-
     @Override
     public String toString() {
         return "[freeSubscribeConnectionsAmount=" + freeSubscribeConnections.size()
                 + ", freeSubscribeConnectionsCounter=" + freeSubscribeConnectionsCounter
                 + ", freeConnectionsAmount=" + freeConnections.size() + ", freeConnectionsCounter="
-                + freeConnectionsCounter + ", freezed=" + freezed + ", freezeReason=" + freezeReason
+                + freeConnectionsCounter + ", freezeReason=" + freezeReason
                 + ", client=" + client + ", nodeType=" + nodeType + ", firstFail=" + firstFailTime
                 + "]";
     }

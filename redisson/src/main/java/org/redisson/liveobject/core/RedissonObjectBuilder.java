@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,51 +15,24 @@
  */
 package org.redisson.liveobject.core;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Queue;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentMap;
-
-import org.redisson.RedissonBlockingDeque;
-import org.redisson.RedissonBlockingQueue;
-import org.redisson.RedissonDeque;
-import org.redisson.RedissonList;
-import org.redisson.RedissonLiveObjectService;
-import org.redisson.RedissonMap;
-import org.redisson.RedissonQueue;
-import org.redisson.RedissonReference;
-import org.redisson.RedissonSet;
-import org.redisson.RedissonSortedSet;
-import org.redisson.api.RLiveObject;
-import org.redisson.api.RMap;
-import org.redisson.api.RObject;
-import org.redisson.api.RObjectReactive;
-import org.redisson.api.RObjectRx;
-import org.redisson.api.RedissonClient;
-import org.redisson.api.RedissonReactiveClient;
-import org.redisson.api.RedissonRxClient;
+import org.redisson.*;
+import org.redisson.api.*;
 import org.redisson.api.annotation.REntity;
-import org.redisson.api.annotation.RId;
 import org.redisson.api.annotation.RObjectField;
 import org.redisson.client.codec.Codec;
 import org.redisson.codec.DefaultReferenceCodecProvider;
 import org.redisson.codec.ReferenceCodecProvider;
 import org.redisson.config.Config;
 import org.redisson.liveobject.misc.ClassUtils;
-import org.redisson.liveobject.misc.Introspectior;
 import org.redisson.liveobject.resolver.NamingScheme;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * 
@@ -70,6 +43,7 @@ import org.redisson.liveobject.resolver.NamingScheme;
 public class RedissonObjectBuilder {
 
     private static final Map<Class<?>, Class<? extends RObject>> SUPPORTED_CLASS_MAPPING = new LinkedHashMap<>();
+    private static final Map<Class<?>, CodecMethodRef> REFERENCES = new HashMap<>();
     
     static {
         SUPPORTED_CLASS_MAPPING.put(SortedSet.class,      RedissonSortedSet.class);
@@ -81,9 +55,16 @@ public class RedissonObjectBuilder {
         SUPPORTED_CLASS_MAPPING.put(BlockingQueue.class,  RedissonBlockingQueue.class);
         SUPPORTED_CLASS_MAPPING.put(Queue.class,          RedissonQueue.class);
         SUPPORTED_CLASS_MAPPING.put(List.class,           RedissonList.class);
+        
+        fillCodecMethods(REFERENCES, RedissonClient.class, RObject.class);
+        fillCodecMethods(REFERENCES, RedissonReactiveClient.class, RObjectReactive.class);
+        fillCodecMethods(REFERENCES, RedissonRxClient.class, RObjectRx.class);
     }
 
     private final Config config;
+    private final RedissonClient redisson;
+    private final RedissonReactiveClient redissonReactive;
+    private final RedissonRxClient redissonRx;
     
     public static class CodecMethodRef {
 
@@ -98,20 +79,28 @@ public class RedissonObjectBuilder {
         }
     }
     
-    private static final Map<Class<?>, CodecMethodRef> REFERENCES = new HashMap<>();
-    
     private final ReferenceCodecProvider codecProvider = new DefaultReferenceCodecProvider();
     
-    public RedissonObjectBuilder(Config config) {
+    public RedissonObjectBuilder(Config config, 
+            RedissonClient redisson, RedissonReactiveClient redissonReactive, RedissonRxClient redissonRx) {
         super();
         this.config = config;
-        fillCodecMethods(REFERENCES, RedissonClient.class, RObject.class);
-        fillCodecMethods(REFERENCES, RedissonReactiveClient.class, RObjectReactive.class);
-        fillCodecMethods(REFERENCES, RedissonRxClient.class, RObjectRx.class);
+        this.redisson = redisson;
+        this.redissonReactive = redissonReactive;
+        this.redissonRx = redissonRx;
     }
 
     public ReferenceCodecProvider getReferenceCodecProvider() {
         return codecProvider;
+    }
+
+    public void storeAsync(RObject ar, String fieldName, RMap<String, Object> liveMap) {
+        Codec codec = ar.getCodec();
+        if (codec != null) {
+            codecProvider.registerCodec((Class) codec.getClass(), codec);
+        }
+        liveMap.fastPutAsync(fieldName,
+                new RedissonReference(ar.getClass(), ar.getName(), codec));
     }
     
     public void store(RObject ar, String fieldName, RMap<String, Object> liveMap) {
@@ -123,13 +112,13 @@ public class RedissonObjectBuilder {
                 new RedissonReference(ar.getClass(), ar.getName(), codec));
     }
     
-    public RObject createObject(Object id, Class<?> clazz, Class<?> fieldType, String fieldName, RedissonClient redisson) {
+    public RObject createObject(Object id, Class<?> clazz, Class<?> fieldType, String fieldName) {
         Class<? extends RObject> mappedClass = getMappedClass(fieldType);
         try {
             if (mappedClass != null) {
                 Codec fieldCodec = getFieldCodec(clazz, mappedClass, fieldName);
                 NamingScheme fieldNamingScheme = getNamingScheme(clazz, fieldCodec);
-                String referenceName = fieldNamingScheme.getFieldReferenceName(clazz, id, mappedClass, fieldName, null);
+                String referenceName = fieldNamingScheme.getFieldReferenceName(clazz, id, mappedClass, fieldName);
                 
                 return createRObject(redisson, mappedClass, referenceName, fieldCodec);
             }
@@ -142,7 +131,7 @@ public class RedissonObjectBuilder {
     /**
      * WARNING: rEntity has to be the class of @This object.
      */
-    private Codec getFieldCodec(Class<?> rEntity, Class<? extends RObject> rObjectClass, String fieldName) throws Exception {
+    private Codec getFieldCodec(Class<?> rEntity, Class<? extends RObject> rObjectClass, String fieldName) throws ReflectiveOperationException {
         Field field = ClassUtils.getDeclaredField(rEntity, fieldName);
         if (field.isAnnotationPresent(RObjectField.class)) {
             RObjectField anno = field.getAnnotation(RObjectField.class);
@@ -177,7 +166,7 @@ public class RedissonObjectBuilder {
         return null;
     }
     
-    private void fillCodecMethods(Map<Class<?>, CodecMethodRef> map, Class<?> clientClazz, Class<?> objectClazz) {
+    private static void fillCodecMethods(Map<Class<?>, CodecMethodRef> map, Class<?> clientClazz, Class<?> objectClazz) {
         for (Method method : clientClazz.getDeclaredMethods()) {
             if (!method.getReturnType().equals(Void.TYPE)
                     && objectClazz.isAssignableFrom(method.getReturnType())
@@ -197,7 +186,18 @@ public class RedissonObjectBuilder {
         }
     }
 
-    public Object fromReference(RedissonClient redisson, RedissonReference rr) throws Exception {
+    public Object fromReference(RedissonReference rr) throws ReflectiveOperationException {
+        if (redisson != null) {
+            return fromReference(redisson, rr);
+        } else if (redissonReactive != null) {
+            return fromReference(redissonReactive, rr);
+        } else if (redissonRx != null) {
+            return fromReference(redissonRx, rr);
+        }
+        throw new IllegalStateException();
+    }
+    
+    private Object fromReference(RedissonClient redisson, RedissonReference rr) throws ReflectiveOperationException {
         Class<? extends Object> type = rr.getType();
         if (type != null) {
             if (ClassUtils.isAnnotationPresent(type, REntity.class)) {
@@ -213,8 +213,7 @@ public class RedissonObjectBuilder {
     }
 
     private Object getObject(Object redisson, RedissonReference rr, Class<? extends Object> type,
-            ReferenceCodecProvider codecProvider)
-            throws IllegalAccessException, InvocationTargetException, Exception, ClassNotFoundException {
+            ReferenceCodecProvider codecProvider) throws ReflectiveOperationException {
         if (type != null) {
             CodecMethodRef b = REFERENCES.get(type);
             if (b == null && type.getInterfaces().length > 0) {
@@ -236,7 +235,7 @@ public class RedissonObjectBuilder {
         return rr.getCodec() == null;
     }
 
-    public Object fromReference(RedissonRxClient redisson, RedissonReference rr) throws Exception {
+    private Object fromReference(RedissonRxClient redisson, RedissonReference rr) throws ReflectiveOperationException {
         Class<? extends Object> type = rr.getReactiveType();
         /**
          * Live Object from reference in reactive client is not supported yet.
@@ -244,7 +243,7 @@ public class RedissonObjectBuilder {
         return getObject(redisson, rr, type, codecProvider);
     }
     
-    public Object fromReference(RedissonReactiveClient redisson, RedissonReference rr) throws Exception {
+    private Object fromReference(RedissonReactiveClient redisson, RedissonReference rr) throws ReflectiveOperationException {
         Class<? extends Object> type = rr.getReactiveType();
         /**
          * Live Object from reference in reactive client is not supported yet.
@@ -280,13 +279,9 @@ public class RedissonObjectBuilder {
             if (object instanceof RLiveObject) {
                 Class<? extends Object> rEntity = object.getClass().getSuperclass();
                 NamingScheme ns = getNamingScheme(rEntity);
-                String name = Introspectior
-                        .getFieldsWithAnnotation(rEntity, RId.class)
-                        .getOnly().getName();
-                Class<?> type = ClassUtils.getDeclaredField(rEntity, name).getType();
-                
+
                 return new RedissonReference(rEntity,
-                        ns.getName(rEntity, type, name, ((RLiveObject) object).getLiveObjectId()));
+                        ns.getName(rEntity, ((RLiveObject) object).getLiveObjectId()));
             }
         } catch (Exception e) {
             throw new IllegalArgumentException(e);
@@ -294,7 +289,7 @@ public class RedissonObjectBuilder {
         return null;
     }
 
-    public <T extends RObject, K extends Codec> T createRObject(RedissonClient redisson, Class<T> expectedType, String name, K codec) throws Exception {
+    private <T extends RObject, K extends Codec> T createRObject(RedissonClient redisson, Class<T> expectedType, String name, K codec) throws ReflectiveOperationException {
         List<Class<?>> interfaces = Arrays.asList(expectedType.getInterfaces());
         for (Class<?> iType : interfaces) {
             if (REFERENCES.containsKey(iType)) {// user cache to speed up things a little.

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,16 @@ package org.redisson.connection;
 
 import java.net.InetSocketAddress;
 
+/**
+ *
+ * @author Nikita Koksharov
+ *
+ */
 public interface ConnectionListener {
 
     /**
      * This method will be triggered when Redisson
-     * connects to Redis server.
+     * connected to Redis server.
      *
      * @param addr - Redis server network address
      */
@@ -29,8 +34,7 @@ public interface ConnectionListener {
 
     /**
      * This method will be triggered when Redisson
-     * discovers that Redis server connected before
-     * now in disconnected state.
+     * discovers that Redis server in disconnected state.
      *
      * @param addr - Redis server network address
      */

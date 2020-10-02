@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ public class TaskParameters implements Serializable {
     private byte[] lambdaBody;
     private byte[] state;
     private String requestId;
+    private long ttl;
 
     public TaskParameters() {
     }
@@ -42,7 +43,14 @@ public class TaskParameters implements Serializable {
         this.state = state;
         this.lambdaBody = lambdaBody;
     }
-    
+
+    public long getTtl() {
+        return ttl;
+    }
+    public void setTtl(long ttl) {
+        this.ttl = ttl;
+    }
+
     public byte[] getLambdaBody() {
         return lambdaBody;
     }

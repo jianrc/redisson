@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,9 @@
  */
 package org.redisson.config;
 
-import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import org.redisson.misc.URIBuilder;
 
 /**
  * Configuration for an Azure Redis Cache or AWS ElastiCache servers. 
@@ -32,7 +31,7 @@ public class ReplicatedServersConfig extends BaseMasterSlaveServersConfig<Replic
     /**
      * Replication group node urls list
      */
-    private List<URI> nodeAddresses = new ArrayList<URI>();
+    private List<String> nodeAddresses = new ArrayList<>();
 
     /**
      * Replication group scan interval in milliseconds
@@ -61,15 +60,13 @@ public class ReplicatedServersConfig extends BaseMasterSlaveServersConfig<Replic
      * @return config
      */
     public ReplicatedServersConfig addNodeAddress(String... addresses) {
-        for (String address : addresses) {
-            nodeAddresses.add(URIBuilder.create(address));
-        }
+        nodeAddresses.addAll(Arrays.asList(addresses));
         return this;
     }
-    public List<URI> getNodeAddresses() {
+    public List<String> getNodeAddresses() {
         return nodeAddresses;
     }
-    void setNodeAddresses(List<URI> nodeAddresses) {
+    void setNodeAddresses(List<String> nodeAddresses) {
         this.nodeAddresses = nodeAddresses;
     }
 
@@ -78,6 +75,8 @@ public class ReplicatedServersConfig extends BaseMasterSlaveServersConfig<Replic
     }
     /**
      * Replication group scan interval in milliseconds
+     * <p>
+     * Default is <code>1000</code>
      *
      * @param scanInterval in milliseconds
      * @return config
@@ -88,7 +87,8 @@ public class ReplicatedServersConfig extends BaseMasterSlaveServersConfig<Replic
     }
 
     /**
-     * Database index used for Redis connection
+     * Database index used for Redis connection.
+     * <p>
      * Default is <code>0</code>
      *
      * @param database number

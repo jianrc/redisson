@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,15 +30,17 @@ public class DeleteOperation extends TransactionalOperation {
 
     private String lockName;
     private String transactionId;
+    private long threadId;
     
     public DeleteOperation(String name) {
-        this(name, null, null);
+        this(name, null, null, 0);
     }
     
-    public DeleteOperation(String name, String lockName, String transactionId) {
+    public DeleteOperation(String name, String lockName, String transactionId, long threadId) {
         super(name, null);
         this.lockName = lockName;
         this.transactionId = transactionId;
+        this.threadId = threadId;
     }
 
     @Override

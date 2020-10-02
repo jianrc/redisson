@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,14 @@ import java.util.Properties;
 
 import org.hibernate.cache.CacheException;
 import org.hibernate.cache.spi.CacheDataDescription;
+import org.hibernate.cache.spi.CacheKeysFactory;
 import org.hibernate.cache.spi.NaturalIdRegion;
 import org.hibernate.cache.spi.RegionFactory;
 import org.hibernate.cache.spi.access.AccessType;
 import org.hibernate.cache.spi.access.NaturalIdRegionAccessStrategy;
 import org.hibernate.cfg.Settings;
 import org.redisson.api.RMapCache;
+import org.redisson.connection.ConnectionManager;
 import org.redisson.hibernate.strategy.NonStrictReadWriteNaturalIdRegionAccessStrategy;
 import org.redisson.hibernate.strategy.ReadOnlyNaturalIdRegionAccessStrategy;
 import org.redisson.hibernate.strategy.ReadWriteNaturalIdRegionAccessStrategy;
@@ -38,13 +40,19 @@ import org.redisson.hibernate.strategy.TransactionalNaturalIdRegionAccessStrateg
 public class RedissonNaturalIdRegion extends BaseRegion implements NaturalIdRegion {
 
     private final Settings settings;
+    private final CacheKeysFactory cacheKeysFactory;
     
-    public RedissonNaturalIdRegion(RMapCache<Object, Object> mapCache, RegionFactory regionFactory,
-            CacheDataDescription metadata, Settings settings, Properties properties, String defaultKey) {
-        super(mapCache, regionFactory, metadata, properties, defaultKey);
+    public RedissonNaturalIdRegion(RMapCache<Object, Object> mapCache, ConnectionManager connectionManager, RegionFactory regionFactory,
+                                   CacheDataDescription metadata, Settings settings, Properties properties, String defaultKey, CacheKeysFactory cacheKeysFactory) {
+        super(mapCache, connectionManager, regionFactory, metadata, properties, defaultKey);
         this.settings = settings;
+        this.cacheKeysFactory = cacheKeysFactory;
     }
 
+    public CacheKeysFactory getCacheKeysFactory() {
+        return cacheKeysFactory;
+    }
+    
     @Override
     public NaturalIdRegionAccessStrategy buildAccessStrategy(AccessType accessType) throws CacheException {
         if (accessType == AccessType.READ_ONLY) {

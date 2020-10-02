@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package org.redisson.api;
 
 import org.redisson.client.codec.Codec;
 
-import io.reactivex.Flowable;
+import io.reactivex.Completable;
 
 /**
  * RxJava2 interface for transaction object allows to execute transactions over Redisson objects.
@@ -150,12 +150,12 @@ public interface RTransactionRx {
      * 
      * @return void
      */
-    Flowable<Void> commit();
+    Completable commit();
     
     /**
      * Rollback all changes made on this transaction.
      * @return void
      */
-    Flowable<Void> rollback();
+    Completable rollback();
 
 }

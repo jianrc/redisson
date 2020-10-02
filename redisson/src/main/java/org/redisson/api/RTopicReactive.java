@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,14 +71,23 @@ public interface RTopicReactive {
     /**
      * Removes the listener by <code>id</code> for listening this topic
      *
-     * @param listenerId - listener id
+     * @param listenerIds - message listener ids
      * @return void
      */
-    Mono<Void> removeListener(int listenerId);
-    
+    Mono<Void> removeListener(Integer... listenerIds);
+
     /**
-     * Returns stream of messages.
+     * Removes the listener by <code>instance</code> for listening this topic
+     *
+     * @param listener - message listener
+     * @return void
+     */
+    Mono<Void> removeListener(MessageListener<?> listener);
+
+    /**
+     * Returns continues stream of messages.
      * 
+     * @param <M> type of message 
      * @param type - type of message to listen
      * @return stream of messages
      */

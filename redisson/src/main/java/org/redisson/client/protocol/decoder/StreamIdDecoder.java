@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,9 @@ public class StreamIdDecoder implements Decoder<Object> {
     public Object decode(ByteBuf buf, State state) throws IOException {
         String id = (String) StringCodec.INSTANCE.getValueDecoder().decode(buf, state);
         String[] parts = id.toString().split("-");
+        if (parts.length == 1) {
+            return null;
+        }
         return new StreamMessageId(Long.valueOf(parts[0]), Long.valueOf(parts[1]));
     }
 

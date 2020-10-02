@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package org.redisson.api;
 
-import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -25,6 +24,33 @@ import java.util.stream.Stream;
  *
  */
 public interface RKeys extends RKeysAsync {
+
+    /**
+     * Get keys using iterator with defined <code>limit</code>.
+     * Keys are traversed with SCAN operation.
+     *
+     * @param limit - limit of keys amount
+     * @return Iterable object
+     */
+    Iterable<String> getKeysWithLimit(int limit);
+
+    /**
+     * Get keys using iterator with defined <code>limit</code>.
+     * Keys are traversed with SCAN operation.
+     * <p>
+     *  Supported glob-style patterns:
+     *  <p>
+     *    h?llo subscribes to hello, hallo and hxllo
+     *    <p>
+     *    h*llo subscribes to hllo and heeeello
+     *    <p>
+     *    h[ae]llo subscribes to hello and hallo, but not hillo
+     *
+     * @param limit - limit of keys amount
+     * @param pattern - match pattern
+     * @return Iterable object
+     */
+    Iterable<String> getKeysWithLimit(String pattern, int limit);
 
     /**
      * Move object to another database
@@ -184,7 +210,7 @@ public interface RKeys extends RKeysAsync {
      * @return Iterable object
      */
     Iterable<String> getKeysByPattern(String pattern, int count);
-    
+
     /**
      * Get all keys using iterator. Keys traversing with SCAN operation. 
      * Each SCAN operation loads up to <code>10</code> keys per request. 
@@ -263,12 +289,6 @@ public interface RKeys extends RKeysAsync {
      */
     String randomKey();
 
-    /*
-     * Use getKeysByPattern method instead
-     */
-    @Deprecated
-    Collection<String> findKeysByPattern(String pattern);
-
     /**
      * Delete multiple objects by a key pattern.
      * <p>
@@ -317,6 +337,11 @@ public interface RKeys extends RKeysAsync {
      * @return count of keys
      */
     long count();
+
+    /**
+     * Swap two databases.
+     */
+    void swapdb(int db1, int db2);
 
     /**
      * Delete all keys of currently selected database

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,15 +48,11 @@ public class RedissonScoredSortedSetRx<V>  {
     }
 
     public Flowable<V> takeFirstElements() {
-        return ElementsStream.takeElements(() -> {
-            return instance.takeFirstAsync();
-        });
+        return ElementsStream.takeElements(instance::takeFirstAsync);
     }
     
     public Flowable<V> takeLastElements() {
-        return ElementsStream.takeElements(() -> {
-            return instance.takeLastAsync();
-        });
+        return ElementsStream.takeElements(instance::takeLastAsync);
     }
     
     public String getName() {
